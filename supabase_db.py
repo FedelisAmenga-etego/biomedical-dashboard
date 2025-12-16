@@ -1,13 +1,3 @@
-# supabase_db.py
-import os
-import streamlit as st
-from supabase import create_client, Client
-import pandas as pd
-import bcrypt
-from datetime import datetime
-from typing import Optional, Dict
-
-
 def get_supabase_creds():
     """
     Get Supabase credentials with multiple fallback strategies.
@@ -89,8 +79,6 @@ class SupabaseDatabase:
         except Exception as e:
             print(f"❌ Failed to connect to Supabase: {e}")
             raise
-
-        print("✅ Connected to Supabase")
 
 
 
