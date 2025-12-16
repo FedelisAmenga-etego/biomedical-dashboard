@@ -16,9 +16,20 @@ def setup_supabase():
     users = db.get_all_users()
     if users.empty:
         print("📝 Creating default admin user...")
-        # Hash password for admin
-        admin_hash = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt())
-        print(f"✅ Admin password hash created")
+    
+        success, message = db.create_user({
+            "username": "admin",
+            "password": "admin123",
+            "full_name": "System Administrator",
+            "role": "admin",
+            "department": "Biomedical"
+        })
+
+        if success:
+            print("✅ Default admin user created successfully")
+        else:
+            print(f"❌ Failed to create admin user: {message}")
+
     
     # Check inventory
     inventory = db.get_inventory()
@@ -48,3 +59,4 @@ def setup_supabase():
 
 if __name__ == "__main__":
     setup_supabase()
+
