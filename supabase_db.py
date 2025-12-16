@@ -87,67 +87,45 @@ class SupabaseDatabase:
             raise
         print("=== DEBUG SupabaseDatabase.__init__() END ===\n")
     
-    def authenticate_user(self, username: str, password: str) -> Optional[Dict]:
-        """
-        Authenticate a user with username and password.
-        Returns user info dict if successful, None otherwise.
-        """
-        print(f"=== DEBUG authenticate_user() START: username='{username}' ===")
+    def authenticate_user(self, username: str, password: str):
+        print(f"\n🔍 AUTH DEBUG: Trying to authenticate '{username}'")
         
-        try:
-            # First, check if users table exists and has data
-            print("Checking users table...")
-            users_response = self.supabase.table("users").select("*").execute()
-            print(f"Total users in database: {len(users_response.data)}")
-            
-            # Find user by username
-            print(f"Looking for username: {username}")
-            response = self.supabase.table("users")\
-                .select("*")\
-                .eq("username", username)\
-                .execute()
-            
-            if not response.data or len(response.data) == 0:
-                print(f"❌ User '{username}' not found")
-                return None
-            
-            user_data = response.data[0]
-            print(f"✅ User found: {user_data.get('username')}")
-            
-            # Verify password
-            stored_hash = user_data.get("password_hash")
-            if not stored_hash:
-                print("❌ No password hash stored for user")
-                return None
-            
-            # Use bcrypt to verify password
-            password_bytes = password.encode('utf-8')
-            stored_hash_bytes = stored_hash.encode('utf-8')
-            
-            if bcrypt.checkpw(password_bytes, stored_hash_bytes):
-                print("✅ Password verified successfully!")
-                
-                # Return user info (without password)
-                user_info = {
-                    'username': user_data.get('username'),
-                    'full_name': user_data.get('full_name', user_data.get('username')),
-                    'role': user_data.get('role', 'user'),
-                    'department': user_data.get('department', 'Biomedical'),
-                    'email': user_data.get('email', '')
-                }
-                print(f"✅ Returning user info: {user_info}")
-                return user_info
-            else:
-                print("❌ Password verification failed")
-                return None
-                
-        except Exception as e:
-            print(f"❌ ERROR in authenticate_user(): {e}")
-            print(traceback.format_exc())
+        # Get user
+        response = self.supabase.table("users").select("*").eq("username", username).execute()
+        
+        if not response.data:
+            print(f"❌ User '{username}' not found in database")
             return None
-        finally:
-            print("=== DEBUG authenticate_user() END ===\n")
-    
+        
+        user = response.data[0]
+        stored_hash = user.get('password_hash', '')
+        
+        print(f"✅ User found: {user.get('full_name')}")
+        print(f"Stored hash: {stored_hash}")
+        print(f"Hash length: {len(stored_hash)}")
+        print(f"Entered password: '{password}'")
+        
+        # Manually test bcrypt
+        import bcrypt
+        try:
+            password_bytes = password.encode('utf-8')
+            hash_bytes = stored_hash.encode('utf-8')
+            
+            print("Testing bcrypt.checkpw...")
+            if bcrypt.checkpw(password_bytes, hash_bytes):
+                print("✅ BCRYPT VERIFICATION SUCCESS!")
+                return user
+            else:
+                print("❌ BCRYPT VERIFICATION FAILED!")
+                print("Possible reasons:")
+                print("1. Wrong password entered")
+                print("2. Hash was not generated correctly")
+                print("3. Hash corrupted in database")
+        except Exception as e:
+            print(f"❌ BCRYPT ERROR: {e}")
+        
+        return None
+        
     # Add other essential methods with debugging
     def get_inventory(self):
         """Get all inventory items."""
@@ -337,3 +315,4 @@ class SupabaseDatabase:
         except Exception as e:
             print(f"❌ ERROR in get_audit_logs(): {e}")
             return pd.DataFrame()
+
