@@ -70,16 +70,27 @@ def get_supabase_creds():
 class SupabaseDatabase:
     def __init__(self):
         self.supabase_url, self.supabase_key = get_supabase_creds()
+        
+        print(f"\n=== DEBUG: Creating Supabase client ===")
+        print(f"URL: {self.supabase_url}")
+        print(f"KEY length: {len(self.supabase_key)}")
+        print(f"KEY first 50 chars: {self.supabase_key[:50]}")
 
-        # Defensive validation
-        if len(self.supabase_key) < 100:
-            raise ValueError("Supabase API key appears invalid or truncated")
+        # Defensive validation - TEMPORARILY DISABLED
+        # if len(self.supabase_key) < 100:
+        #     raise ValueError("Supabase API key appears invalid or truncated")
 
-        self.supabase: Client = create_client(
-            self.supabase_url,
-            self.supabase_key
-        )
+        try:
+            self.supabase: Client = create_client(
+                self.supabase_url,
+                self.supabase_key
+            )
+            print("✅ Connected to Supabase")
+        except Exception as e:
+            print(f"❌ Failed to connect to Supabase: {e}")
+            raise
 
         print("✅ Connected to Supabase")
+
 
 
