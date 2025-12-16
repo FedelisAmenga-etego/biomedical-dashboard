@@ -8,15 +8,30 @@ import numpy as np
 from auth_simple import SimpleAuth
 from supabase_db import SupabaseDatabase
 from data_processor import DataProcessor
+from dotenv import load_dotenv
 import io
 import os
 import base64
 import sqlite3
 
+load_dotenv()
+
+# Get Supabase credentials from Streamlit secrets or environment
+def get_supabase_creds():
+    try:
+        # Try Streamlit secrets first
+        import streamlit as st
+        return st.secrets["supabase"]["SUPABASE_URL"], st.secrets["supabase"]["SUPABASE_KEY"]
+    except:
+        # Fall back to environment variables
+        return os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
+
+
 # Initialize systems
 auth = SimpleAuth()
 db = SupabaseDatabase()
 processor = DataProcessor()
+
 
 # Check authentication
 user = auth.check_auth()
@@ -2845,3 +2860,4 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
