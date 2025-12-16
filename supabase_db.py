@@ -99,17 +99,22 @@ class SupabaseDatabase:
             print(f"3. Found password hash: {stored_hash[:30]}...")
             print(f"   Hash length: {len(stored_hash)}")
             
-            # 4. Verify password with bcrypt
-            print(f"4. Verifying password with bcrypt...")
-            print(f"   Password to check: '{password}'")
+            # Normalize inputs
+            password = password.strip()
+            stored_hash = stored_hash.strip()
+            
+            # Fix bcrypt prefix incompatibility ($2y$ → $2b$)
+            if stored_hash.startswith("$2y$"):
+                stored_hash = "$2b$" + stored_hash[4:]
             
             # Convert to bytes
-            password_bytes = password.encode('utf-8')
-            hash_bytes = stored_hash.encode('utf-8')
+            password_bytes = password.encode("utf-8")
+            hash_bytes = stored_hash.encode("utf-8")
             
-            # Use bcrypt
+            # Verify password
             print("   Calling bcrypt.checkpw()...")
             if bcrypt.checkpw(password_bytes, hash_bytes):
+
                 print("✅✅✅ PASSWORD VERIFICATION SUCCESSFUL!")
                 
                 # Return user info
@@ -325,5 +330,6 @@ class SupabaseDatabase:
         except Exception as e:
             print(f"❌ ERROR in get_audit_logs(): {e}")
             return pd.DataFrame()
+
 
 
