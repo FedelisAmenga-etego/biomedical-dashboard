@@ -1,4 +1,4 @@
-# auth_simple.py
+# auth_simple.py - UPDATED WITH DEBUGGING
 import streamlit as st
 from supabase_db import SupabaseDatabase
 import base64
@@ -9,11 +9,15 @@ class SimpleAuth:
     def __init__(self):
         self.db = None  # lazy-loaded
         self.initialize_session_state()
+        print("=== DEBUG SimpleAuth.__init__() ===")
 
     def get_db(self):
         """Create Supabase connection only when needed"""
+        print("=== DEBUG SimpleAuth.get_db() ===")
         if self.db is None:
+            print("Creating new SupabaseDatabase instance...")
             self.db = SupabaseDatabase()
+            print("✅ SupabaseDatabase instance created")
         return self.db
 
     def get_logo_base64(self):
@@ -36,19 +40,23 @@ class SimpleAuth:
             st.session_state.user_info = {}
 
     def check_auth(self):
+        print("=== DEBUG SimpleAuth.check_auth() ===")
         if st.session_state.authenticated and st.session_state.user_info:
             user_info = st.session_state.user_info
-
+            print(f"User already authenticated: {user_info.get('username')}")
+            
             user_info.setdefault("full_name", user_info.get("username", "User").title())
             user_info.setdefault("department", "Biomedical")
             user_info.setdefault("role", "user")
 
             return user_info
 
+        print("Showing login interface...")
         self.show_login_interface()
         st.stop()
 
     def show_login_interface(self):
+        print("=== DEBUG SimpleAuth.show_login_interface() ===")
         logo_base64 = self.get_logo_base64()
 
         logo_html = (
@@ -76,11 +84,22 @@ class SimpleAuth:
         login_btn = st.sidebar.button("Login")
 
         if login_btn:
+            print(f"Login button clicked for username: {username}")
             if not username or not password:
                 st.sidebar.error("Please enter both username and password")
             else:
                 with st.spinner("Authenticating..."):
-                    user_info = self.get_db().authenticate_user(username, password)
+                    print("Calling authenticate_user...")
+                    try:
+                        db_instance = self.get_db()
+                        print(f"Database instance: {db_instance}")
+                        user_info = db_instance.authenticate_user(username, password)
+                        print(f"Authentication result: {user_info}")
+                    except Exception as e:
+                        print(f"❌ ERROR during authentication: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        user_info = None
 
                 if user_info:
                     st.session_state.authenticated = True
