@@ -1,13 +1,13 @@
 # auth_simple.py - Fixed authentication to work with original credentials
 import streamlit as st
-from database_simple import SimpleDatabase
+from supabase_db import SupabaseDatabase
 import base64
 import pandas as pd
 import hashlib, binascii, os
 
 class SimpleAuth:
     def __init__(self):
-        self.db = SimpleDatabase()
+        self.db = SupabaseDatabase()
         self.initialize_session_state()
     
     def get_logo_base64(self):
@@ -133,4 +133,5 @@ class SimpleAuth:
         if st.session_state.authenticated:
             role = st.session_state.user_info.get('role')
             return role in ['admin', 'manager']
+
         return False
