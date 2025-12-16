@@ -8,11 +8,32 @@ from typing import Optional, Dict, List
 from dotenv import load_dotenv
 
 load_dotenv()
+def get_supabase_creds():
+    """Get credentials from Streamlit secrets or environment."""
+    try:
+        # Primary: Try to get from Streamlit secrets (for cloud deployment)
+        import streamlit as st
+        supabase_url = st.secrets["supabase"]["SUPABASE_URL"]
+        supabase_key = st.secrets["supabase"]["SUPABASE_KEY"]
+        print("✅ Using credentials from Streamlit secrets")
+    except (KeyError, FileNotFoundError):
+        # Fallback: Try environment variables (for local development)
+        print("⚠️  Streamlit secrets not found, checking environment variables...")
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_KEY")
+    
+    if not supabase_url or not supabase_key:
+        raise ValueError(
+            "Supabase credentials not found. "
+            "Please set SUPABASE_URL and SUPABASE_KEY in Streamlit Cloud Secrets "
+            "or in a local .env file."
+        )
+    return supabase_url, supabase_key
 
 class SupabaseDatabase:
     def __init__(self):
-        self.supabase_url = os.getenv("SUPABASE_URL")
-        self.supabase_key = os.getenv("SUPABASE_KEY")
+        self.supabase_url, self.supabase_key = get_supabase_creds() 
+        self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
         
         if not self.supabase_url or not self.supabase_key:
             raise ValueError("Supabase URL and Key must be set in environment variables")
@@ -383,4 +404,5 @@ class SupabaseDatabase:
             return True, "User deleted successfully"
             
         except Exception as e:
+
             return False, f"Error deleting user: {str(e)}"
