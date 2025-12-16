@@ -15,44 +15,54 @@ def get_supabase_creds():
     supabase_url = None
     supabase_key = None
     
-    # Strategy 1: Nested secrets (as in main_app.py)
+    print("=== DEBUG: Starting get_supabase_creds() ===")
+    
+    # Strategy 1: Check all possible locations
     try:
+        print("1. Checking st.secrets['supabase']...")
         supabase_url = st.secrets["supabase"]["SUPABASE_URL"]
         supabase_key = st.secrets["supabase"]["SUPABASE_KEY"]
-        print("✅ Using Supabase credentials from nested Streamlit secrets")
-    except (KeyError, AttributeError):
-        pass
+        print(f"   Found URL: {supabase_url}")
+        print(f"   Found KEY: {supabase_key[:30]}...")
+        print(f"   Key length: {len(supabase_key)}")
+    except Exception as e:
+        print(f"   ❌ Not found: {e}")
     
-    # Strategy 2: Direct secrets
     if not supabase_url or not supabase_key:
         try:
-            supabase_url = st.secrets.get("SUPABASE_URL")
-            supabase_key = st.secrets.get("SUPABASE_KEY")
-            if supabase_url and supabase_key:
-                print("✅ Using Supabase credentials from direct Streamlit secrets")
-        except (KeyError, AttributeError):
-            pass
+            print("\n2. Checking st.secrets directly...")
+            supabase_url = st.secrets["SUPABASE_URL"]
+            supabase_key = st.secrets["SUPABASE_KEY"]
+            print(f"   Found URL: {supabase_url}")
+            print(f"   Found KEY: {supabase_key[:30]}...")
+            print(f"   Key length: {len(supabase_key)}")
+        except Exception as e:
+            print(f"   ❌ Not found: {e}")
     
-    # Strategy 3: Environment variables
     if not supabase_url or not supabase_key:
+        print("\n3. Checking environment variables...")
         supabase_url = os.getenv("SUPABASE_URL")
         supabase_key = os.getenv("SUPABASE_KEY")
         if supabase_url and supabase_key:
-            print("⚠️ Using Supabase credentials from environment variables")
+            print(f"   Found URL: {supabase_url}")
+            print(f"   Found KEY: {supabase_key[:30]}...")
+            print(f"   Key length: {len(supabase_key)}")
+        else:
+            print("   ❌ Not found in environment")
     
     # Final check
     if not supabase_url or not supabase_key:
-        error_msg = "Supabase credentials missing. "
-        error_msg += "Set SUPABASE_URL and SUPABASE_KEY in Streamlit secrets or environment."
-        error_msg += "\n\nExpected format in .streamlit/secrets.toml:"
-        error_msg += "\n[supabase]"
-        error_msg += "\nSUPABASE_URL = 'your-project-url'"
-        error_msg += "\nSUPABASE_KEY = 'your-anon-key'"
-        raise ValueError(error_msg)
+        print("\n❌ ERROR: No Supabase credentials found!")
+        print("Available st.secrets keys:", list(st.secrets.keys()) if hasattr(st.secrets, '__dict__') else "No secrets")
+        raise ValueError("Supabase credentials missing")
     
-    # Validate key length
-    if len(supabase_key) < 100:
-        raise ValueError(f"Supabase API key appears invalid or truncated (length: {len(supabase_key)})")
+    print(f"\n✅ Final URL: {supabase_url}")
+    print(f"✅ Final KEY length: {len(supabase_key)}")
+    print(f"✅ Final KEY preview: {supabase_key[:50]}...")
+    
+    # TEMPORARY: Remove length validation for debugging
+    # if len(supabase_key) < 100:
+    #     raise ValueError(f"Supabase API key appears invalid or truncated (length: {len(supabase_key)})")
     
     return supabase_url, supabase_key
 
@@ -71,4 +81,5 @@ class SupabaseDatabase:
         )
 
         print("✅ Connected to Supabase")
+
 
