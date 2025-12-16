@@ -15,48 +15,18 @@ def get_supabase_creds():
     """
     print("=== DEBUG get_supabase_creds() START ===")
     
-    supabase_url = None
-    supabase_key = None
-    
-    # Try all possible locations
     try:
         # Check nested structure (as in main_app.py)
         supabase_url = st.secrets["supabase"]["SUPABASE_URL"]
         supabase_key = st.secrets["supabase"]["SUPABASE_KEY"]
         print("✅ Found credentials in st.secrets['supabase']")
-    except Exception as e1:
-        print(f"❌ Not in st.secrets['supabase']: {e1}")
-        try:
-            # Check direct structure
-            supabase_url = st.secrets["SUPABASE_URL"]
-            supabase_key = st.secrets["SUPABASE_KEY"]
-            print("✅ Found credentials in st.secrets directly")
-        except Exception as e2:
-            print(f"❌ Not in st.secrets directly: {e2}")
-            # Check environment
-            supabase_url = os.getenv("SUPABASE_URL")
-            supabase_key = os.getenv("SUPABASE_KEY")
-            if supabase_url and supabase_key:
-                print("✅ Found credentials in environment variables")
-            else:
-                print("❌ Not in environment variables")
+    except Exception as e:
+        print(f"❌ Error getting credentials: {e}")
+        print("Available secrets:", list(st.secrets.keys()))
+        raise ValueError(f"Failed to get Supabase credentials: {e}")
     
-    # If still not found, raise error
-    if not supabase_url or not supabase_key:
-        print("❌ ERROR: No Supabase credentials found anywhere!")
-        print("Available st.secrets keys:", list(st.secrets.keys()))
-        raise ValueError(
-            "Supabase credentials missing. "
-            "Please check your .streamlit/secrets.toml file. "
-            "It should contain:\n"
-            "[supabase]\n"
-            "SUPABASE_URL = \"https://your-project.supabase.co\"\n"
-            "SUPABASE_KEY = \"your-anon-key\""
-        )
-    
-    print(f"✅ URL found: {supabase_url}")
+    print(f"✅ URL: {supabase_url}")
     print(f"✅ Key length: {len(supabase_key)}")
-    print(f"✅ Key preview: {supabase_key[:30]}...")
     print("=== DEBUG get_supabase_creds() END ===\n")
     
     return supabase_url, supabase_key
@@ -75,11 +45,7 @@ class SupabaseDatabase:
                 self.supabase_key
             )
             
-            # Test connection
-            print("Testing Supabase connection...")
-            test_response = self.supabase.table("users").select("*").limit(1).execute()
-            print(f"✅ Connected to Supabase successfully!")
-            print(f"✅ Test query returned: {len(test_response.data)} rows")
+            print("✅ Supabase client created successfully")
             
         except Exception as e:
             print(f"❌ ERROR in SupabaseDatabase.__init__(): {e}")
@@ -88,73 +54,117 @@ class SupabaseDatabase:
         print("=== DEBUG SupabaseDatabase.__init__() END ===\n")
     
     def authenticate_user(self, username: str, password: str):
-        print(f"\n🔍 AUTH DEBUG: Trying to authenticate '{username}'")
+        """
+        Authenticate a user with username and password.
+        Returns user info dict if successful, None otherwise.
+        """
+        print(f"\n" + "="*60)
+        print(f"🔐 AUTHENTICATE_USER called for username: '{username}'")
+        print("="*60)
         
-        # Get user
-        response = self.supabase.table("users").select("*").eq("username", username).execute()
-        
-        if not response.data:
-            print(f"❌ User '{username}' not found in database")
-            return None
-        
-        user = response.data[0]
-        stored_hash = user.get('password_hash', '')
-        
-        print(f"✅ User found: {user.get('full_name')}")
-        print(f"Stored hash: {stored_hash}")
-        print(f"Hash length: {len(stored_hash)}")
-        print(f"Entered password: '{password}'")
-        
-        # Manually test bcrypt
-        import bcrypt
         try:
+            # 1. First, let's see if we can connect to the database
+            print("1. Testing database connection...")
+            
+            # 2. Get the user from database
+            print(f"2. Querying database for user '{username}'...")
+            response = self.supabase.table("users")\
+                .select("*")\
+                .eq("username", username)\
+                .execute()
+            
+            print(f"   Query response data: {response.data}")
+            print(f"   Number of users found: {len(response.data)}")
+            
+            if not response.data or len(response.data) == 0:
+                print(f"❌ ERROR: No user found with username '{username}'")
+                print("   Available users in database:")
+                try:
+                    all_users = self.supabase.table("users").select("username").execute()
+                    print(f"   {[u['username'] for u in all_users.data]}")
+                except:
+                    print("   Could not fetch all users")
+                return None
+            
+            user_data = response.data[0]
+            print(f"✅ User found in database: {user_data}")
+            
+            # 3. Check password hash
+            stored_hash = user_data.get("password_hash")
+            if not stored_hash:
+                print("❌ ERROR: User has no password_hash field")
+                print(f"   User data keys: {list(user_data.keys())}")
+                return None
+            
+            print(f"3. Found password hash: {stored_hash[:30]}...")
+            print(f"   Hash length: {len(stored_hash)}")
+            
+            # 4. Verify password with bcrypt
+            print(f"4. Verifying password with bcrypt...")
+            print(f"   Password to check: '{password}'")
+            
+            # Convert to bytes
             password_bytes = password.encode('utf-8')
             hash_bytes = stored_hash.encode('utf-8')
             
-            print("Testing bcrypt.checkpw...")
+            # Use bcrypt
+            print("   Calling bcrypt.checkpw()...")
             if bcrypt.checkpw(password_bytes, hash_bytes):
-                print("✅ BCRYPT VERIFICATION SUCCESS!")
-                return user
+                print("✅✅✅ PASSWORD VERIFICATION SUCCESSFUL!")
+                
+                # Return user info
+                user_info = {
+                    'username': user_data.get('username'),
+                    'full_name': user_data.get('full_name', 'User'),
+                    'role': user_data.get('role', 'user'),
+                    'department': user_data.get('department', 'Biomedical'),
+                    'email': user_data.get('email', '')
+                }
+                print(f"✅ Returning user info: {user_info}")
+                return user_info
             else:
-                print("❌ BCRYPT VERIFICATION FAILED!")
-                print("Possible reasons:")
-                print("1. Wrong password entered")
-                print("2. Hash was not generated correctly")
-                print("3. Hash corrupted in database")
+                print("❌❌❌ PASSWORD VERIFICATION FAILED!")
+                print("   This means:")
+                print("   1. Wrong password was entered, OR")
+                print("   2. The hash in database doesn't match the password")
+                print(f"   Stored hash: {stored_hash}")
+                
+                # Let's try to generate what the hash SHOULD be
+                print("\n   Debug: What hash SHOULD be stored for this password?")
+                test_hash = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
+                print(f"   Generated test hash: {test_hash.decode('utf-8')[:50]}...")
+                
+                return None
+                
         except Exception as e:
-            print(f"❌ BCRYPT ERROR: {e}")
-        
-        return None
-        
-    # Add other essential methods with debugging
+            print(f"❌❌❌ EXCEPTION in authenticate_user: {e}")
+            print(traceback.format_exc())
+            return None
+    
+    # Keep other methods as they were
     def get_inventory(self):
-        """Get all inventory items."""
         try:
-            print("=== DEBUG get_inventory() START ===")
             response = self.supabase.table("inventory").select("*").execute()
-            print(f"✅ Retrieved {len(response.data)} inventory items")
             df = pd.DataFrame(response.data)
             
-            # Ensure quantity column exists
             if 'total_units' in df.columns and 'quantity' not in df.columns:
                 df = df.rename(columns={'total_units': 'quantity'})
             elif 'quantity' not in df.columns and len(df) > 0:
                 df['quantity'] = 0
                 
-            print("=== DEBUG get_inventory() END ===\n")
             return df
         except Exception as e:
-            print(f"❌ ERROR in get_inventory(): {e}")
+            print(f"Error in get_inventory: {e}")
             return pd.DataFrame()
     
     def get_all_users(self):
-        """Get all users (admin only)."""
         try:
             response = self.supabase.table("users").select("*").execute()
             return pd.DataFrame(response.data)
         except Exception as e:
-            print(f"❌ ERROR in get_all_users(): {e}")
+            print(f"Error in get_all_users: {e}")
             return pd.DataFrame()
+    
     
     def add_inventory_item(self, item_data: Dict, user: Dict = None):
         """Add a new inventory item."""
@@ -315,4 +325,5 @@ class SupabaseDatabase:
         except Exception as e:
             print(f"❌ ERROR in get_audit_logs(): {e}")
             return pd.DataFrame()
+
 
