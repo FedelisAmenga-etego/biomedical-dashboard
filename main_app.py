@@ -53,27 +53,27 @@ def get_supabase_creds():
 
 
 # Check authentication
-# user = auth.check_auth()
+user = auth.check_auth()
 
-# def get_client_info():
-#     """Get client IP and user agent"""
-#     import streamlit as st
+def get_client_info():
+    """Get client IP and user agent"""
+    import streamlit as st
     
-#     # Try to get IP from various sources
-#     ip_address = "Unknown"
-#     user_agent = "Unknown"
+    # Try to get IP from various sources
+    ip_address = "Unknown"
+    user_agent = "Unknown"
     
-#     try:
-#         # Get headers from Streamlit request context
-#         ctx = st.runtime.get_instance()._session_mgr.list_active_sessions()[0].request
-#         if hasattr(ctx, 'headers'):
-#             headers = ctx.headers
-#             ip_address = headers.get('X-Forwarded-For', headers.get('Remote-Addr', 'Unknown'))
-#             user_agent = headers.get('User-Agent', 'Unknown')
-#     except:
-#         pass
+    try:
+        # Get headers from Streamlit request context
+        ctx = st.runtime.get_instance()._session_mgr.list_active_sessions()[0].request
+        if hasattr(ctx, 'headers'):
+            headers = ctx.headers
+            ip_address = headers.get('X-Forwarded-For', headers.get('Remote-Addr', 'Unknown'))
+            user_agent = headers.get('User-Agent', 'Unknown')
+    except:
+        pass
     
-#     return ip_address, user_agent
+    return ip_address, user_agent
 
 # Logo function matching VC.py
 def get_base64_of_image(image_path):
@@ -2872,5 +2872,6 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
