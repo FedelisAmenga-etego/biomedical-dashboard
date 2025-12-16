@@ -82,7 +82,7 @@ class SimpleAuth:
         username = st.sidebar.text_input("Username")
         password = st.sidebar.text_input("Password", type="password")
         login_btn = st.sidebar.button("Login")
-
+    
         if login_btn:
             print(f"Login button clicked for username: {username}")
             if not username or not password:
@@ -92,23 +92,29 @@ class SimpleAuth:
                     print("Calling authenticate_user...")
                     try:
                         db_instance = self.get_db()
-                        print(f"Database instance: {db_instance}")
+                        print(f"Database instance created: {db_instance is not None}")
+                        
+                        # IMPORTANT: Add more debugging here
+                        print(f"About to call authenticate_user('{username}', '{password}')")
+                        
                         user_info = db_instance.authenticate_user(username, password)
+                        
                         print(f"Authentication result: {user_info}")
+                        
                     except Exception as e:
-                        print(f"❌ ERROR during authentication: {e}")
+                        print(f"❌❌❌ EXCEPTION during authentication: {e}")
                         import traceback
                         traceback.print_exc()
                         user_info = None
-
+    
                 if user_info:
                     st.session_state.authenticated = True
                     st.session_state.user_info = user_info
                     st.sidebar.success(f"Signed in as {user_info['full_name']}")
                     st.rerun()
                 else:
-                    st.sidebar.error("Invalid username or password")
-
+                    st.sidebar.error("Invalid username or password. Check logs for details.")
+    
         st.info("Please log in from the sidebar to access the dashboard.")
 
     def logout(self):
@@ -127,3 +133,4 @@ class SimpleAuth:
             st.session_state.authenticated
             and st.session_state.user_info.get("role") in ["admin", "manager"]
         )
+
