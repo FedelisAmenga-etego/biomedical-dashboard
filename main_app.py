@@ -897,7 +897,7 @@ elif active_tab == "Inventory":
                     # Get client info for audit
                     ip_address, user_agent = get_client_info()
                     
-                    if db.add_inventory_item(item_data, user, ip_address, user_agent):
+                    if db.add_inventory_item(item_data, user):
                         st.success(f"✅ Item '{item_name}' added successfully!")
                         st.rerun()
                     else:
@@ -988,7 +988,7 @@ elif active_tab == "Inventory":
                         # Get client info for audit
                         ip_address, user_agent = get_client_info()
                         
-                        if db.update_inventory_item(item_data['item_id'], updates, user, ip_address, user_agent):
+                        if db.update_inventory_item(item_data['item_id'], updates, user):
                             st.success("✅ Item updated successfully!")
                             st.rerun()
                         else:
@@ -1047,7 +1047,7 @@ elif active_tab == "Usage":
                         # Get client info for audit
                         ip_address, user_agent = get_client_info()
                         
-                        if db.log_usage(usage_data, user, ip_address, user_agent):
+                        if db.log_usage(usage_data, user):
                             st.success(f"✅ Usage of {units_used} units logged successfully!")
                             st.rerun()
                         else:
@@ -2843,4 +2843,5 @@ st.markdown(
     "<p style='text-align:center;font-size:13px;color:gray;margin-top:25px;'>"
     "© 2025 Navrongo Health Research Centre – Built by Fedelis Wekia Amenga-etego</p>",
     unsafe_allow_html=True
+
 )
