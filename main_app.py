@@ -1066,10 +1066,12 @@ elif active_tab == "Usage":
                     notes = st.text_area("Notes", placeholder="Additional details...")
                 
                 submitted = st.form_submit_button("📝 Log Usage", type="primary")
-                
+
                 if submitted:
                     if not purpose:
                         st.error("Purpose is required!")
+                    elif units_used <= 0:
+                        st.error("Units used must be greater than 0!")
                     else:
                         usage_data = {
                             'item_id': item_data['item_id'],
@@ -1084,11 +1086,20 @@ elif active_tab == "Usage":
                         # Get client info for audit
                         ip_address, user_agent = get_client_info()
                         
-                        if db.log_usage(usage_data, user):
+                        # Show loading spinner
+                        with st.spinner("Logging usage..."):
+                            success = db.log_usage(usage_data, user)
+                        
+                        if success:
                             st.success(f"✅ Usage of {units_used} units logged successfully!")
                             st.rerun()
                         else:
                             st.error("❌ Failed to log usage.")
+                            st.info("Possible reasons:")
+                            st.info("1. The 'usage_logs' table might not exist in Supabase")
+                            st.info("2. Database connection issue")
+                            st.info("3. Missing required columns in the table")
+                            st.info("Check the Streamlit logs for more details.")
     
     with tab2:
         st.markdown("#### 📊 Usage Statistics")
@@ -2900,6 +2911,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
