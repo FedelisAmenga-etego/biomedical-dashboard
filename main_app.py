@@ -2822,8 +2822,7 @@ elif active_tab == "Settings":
             st.metric("Inventory Items", inventory_count)
             st.metric("Total Units in Stock", f"{total_units:,}")
             st.metric("System Users", users_count)
-            st.metric("Database Size", f"{os.path.getsize(db.db_path) / 1024 / 1024:.2f} MB" 
-                     if os.path.exists(db.db_path) else "N/A")
+            st.metric("Database Size", "Supabase Cloud")
         
         with col_s2:
             st.markdown("##### 🔧 Technical Information")
@@ -2832,8 +2831,8 @@ elif active_tab == "Settings":
             **Application Details:**
             - **Version:** 2.1.0
             - **Last Updated:** {datetime.now().strftime('%Y-%m-%d')}
-            - **Database:** SQLite
-            - **Server:** Localhost
+            - **Database:** Supabase
+            - **Server:** Supabase
             
             **System Requirements:**
             - Python 3.8+
@@ -2841,8 +2840,8 @@ elif active_tab == "Settings":
             - 500MB disk space
             
             **Support Contact:**
-            - IT Department: it-support@nhrc.gov.gh
-            - Biomedical: biomedical@nhrc.gov.gh
+            - Email: f.amengaetego@gmail.com
+            - Phone: 0547548200
             """)
         
         st.markdown("---")
@@ -2876,6 +2875,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
