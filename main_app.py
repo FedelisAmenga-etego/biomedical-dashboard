@@ -1125,31 +1125,12 @@ elif active_tab == "Usage":
         st.markdown("#### 📈 Usage Trend Analysis")
         
         detailed_usage_df = db.get_usage_trends() 
-        
         if not detailed_usage_df.empty:
-            # Convert to datetime
+            # Convert to datetime and extract time components
             detailed_usage_df['usage_date'] = pd.to_datetime(detailed_usage_df['usage_date'])
-            
-            # Time period selector
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                time_period = st.selectbox("Time Period", 
-                                         ["Daily", "Weekly", "Monthly", "Quarterly"])
-            with col2:
-                chart_type = st.selectbox("Chart Type", 
-                                        ["Line Chart", "Bar Chart", "Area Chart"])
-            with col3:
-                top_n = st.slider("Top N Items", 5, 20, 10)
-            
-            # Item selector
-            all_items = detailed_usage_df['item_name'].unique().tolist()
-            selected_items = st.multiselect("Select specific items (or leave empty for all)", 
-                                          all_items)
-            
-            if selected_items:
-                filtered_df = detailed_usage_df[detailed_usage_df['item_name'].isin(selected_items)]
-            else:
-                filtered_df = detailed_usage_df
+            detailed_usage_df['usage_month'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%m')
+            detailed_usage_df['usage_week'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%W')
+            detailed_usage_df['day_of_week'] = detailed_usage_df['usage_date'].dt.day_name()
             
             # Group by time period
             if time_period == "Daily":
@@ -2857,6 +2838,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
