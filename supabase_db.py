@@ -333,13 +333,14 @@ class SupabaseDatabase:
 
 
     def get_usage_trends(self):
-    """Get detailed usage data for trend analysis"""
+        """Get detailed usage data for trend analysis"""
         try:
             response = self.supabase.table("usage_logs").select("*").execute()
             return pd.DataFrame(response.data)
         except Exception as e:
             st.error(f"Error getting usage trends: {e}")
             return pd.DataFrame()
+
 
 
 
