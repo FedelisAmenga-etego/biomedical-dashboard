@@ -332,19 +332,15 @@ class SupabaseDatabase:
             return pd.DataFrame()
 
 
-    # In supabase_db.py, add to SupabaseDatabase class
     def get_usage_trends(self):
-        """Get detailed usage data for trend analysis"""
+    """Get detailed usage data for trend analysis"""
         try:
-            # Query usage logs from Supabase
-            response = self.supabase.table('usage_logs').select('*').execute()
-            if response.data:
-                return pd.DataFrame(response.data)
-            else:
-                return pd.DataFrame()
+            response = self.supabase.table("usage_logs").select("*").execute()
+            return pd.DataFrame(response.data)
         except Exception as e:
-            print(f"Error getting usage trends: {e}")
+            st.error(f"Error getting usage trends: {e}")
             return pd.DataFrame()
+
 
 
 
