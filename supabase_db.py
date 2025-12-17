@@ -195,14 +195,50 @@ class SupabaseDatabase:
     def log_usage(self, usage_data: Dict, user: Dict = None):
         """Log item usage."""
         try:
+            print(f"=== DEBUG log_usage() START ===")
+            print(f"Usage data received: {usage_data}")
+            
             # Add timestamp
             usage_data['usage_date'] = datetime.now().isoformat()
             usage_data['user_id'] = user.get('username') if user else 'unknown'
             
+            print(f"Usage data after adding timestamp: {usage_data}")
+            
+            # Log to usage_logs table
+            print("Inserting into usage_logs table...")
             response = self.supabase.table("usage_logs").insert(usage_data).execute()
+            
+            print(f"Response data: {response.data}")
+            print(f"Response status: Success")
+            print(f"=== DEBUG log_usage() END ===")
+            
+            # Also update inventory quantity
+            if 'item_id' in usage_data and 'units_used' in usage_data:
+                print(f"Updating inventory for item_id: {usage_data['item_id']}")
+                # Get current quantity
+                current_item = self.supabase.table("inventory")\
+                    .select("quantity")\
+                    .eq("item_id", usage_data['item_id'])\
+                    .execute()
+                
+                if current_item.data:
+                    current_qty = current_item.data[0].get('quantity', 0)
+                    new_qty = current_qty - usage_data['units_used']
+                    if new_qty < 0:
+                        new_qty = 0
+                    
+                    update_response = self.supabase.table("inventory")\
+                        .update({"quantity": new_qty})\
+                        .eq("item_id", usage_data['item_id'])\
+                        .execute()
+                    
+                    print(f"Inventory updated from {current_qty} to {new_qty}")
+            
             return len(response.data) > 0
+            
         except Exception as e:
-            print(f"❌ ERROR in log_usage(): {e}")
+            print(f"❌❌❌ ERROR in log_usage(): {e}")
+            print(f"Traceback: {traceback.format_exc()}")
             return False
     
     def get_usage_stats(self):
@@ -339,3 +375,4 @@ class SupabaseDatabase:
         except Exception as e:
             print(f"Error getting usage trends: {e}")
             return pd.DataFrame()
+
