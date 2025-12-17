@@ -540,14 +540,16 @@ class SupabaseDatabase:
             print("✅ Usage logged successfully")
     
             # 2. Audit usage event
-            self.log_audit(
+            self._log_audit_event(
                 user=user,
-                action_type="USAGE",
-                table_name="usage_logs",
-                record_id=str(response.data[0].get("id")),
-                old_data=None,
-                new_data=log_data
+                action_type="INVENTORY_USAGE",
+                table_name="inventory",
+                record_id=item_id,
+                notes=f"Quantity reduced from {current_qty} to {new_qty}",
+                ip_address=ip_address,
+                user_agent=user_agent
             )
+
     
             # 3. Update inventory + audit stock mutation
             item_id = usage_data.get('item_id')
@@ -587,6 +589,7 @@ class SupabaseDatabase:
             import traceback
             print(traceback.format_exc())
             return False
+
 
 
 
