@@ -1066,22 +1066,27 @@ elif active_tab == "Usage":
                     notes = st.text_area("Notes", placeholder="Additional details...")
                 
                 submitted = st.form_submit_button("📝 Log Usage", type="primary")
-
+                
                 if submitted:
                     if not purpose:
                         st.error("Purpose is required!")
                     elif units_used <= 0:
                         st.error("Units used must be greater than 0!")
+                    elif units_used > max_units:
+                        st.error(f"Cannot use more than {max_units} units (current stock)")
                     else:
                         usage_data = {
-                            'item_id': item_data['item_id'],
-                            'item_name': selected_item,
-                            'units_used': units_used,
-                            'purpose': purpose,
-                            'used_by': user['full_name'],
-                            'department': department,
-                            'notes': notes
+                            'item_id': str(item_data['item_id']),  # Ensure it's a string
+                            'item_name': str(selected_item),
+                            'units_used': int(units_used),  # Ensure it's an integer
+                            'purpose': str(purpose),
+                            'used_by': str(user['full_name']),
+                            'department': str(department),
+                            'notes': str(notes) if notes else ""
                         }
+                        
+                        st.write("### Debug Info:")
+                        st.json(usage_data)
                         
                         # Get client info for audit
                         ip_address, user_agent = get_client_info()
@@ -1092,14 +1097,12 @@ elif active_tab == "Usage":
                         
                         if success:
                             st.success(f"✅ Usage of {units_used} units logged successfully!")
+                            # Force refresh data
+                            st.cache_data.clear()
                             st.rerun()
                         else:
                             st.error("❌ Failed to log usage.")
-                            st.info("Possible reasons:")
-                            st.info("1. The 'usage_logs' table might not exist in Supabase")
-                            st.info("2. Database connection issue")
-                            st.info("3. Missing required columns in the table")
-                            st.info("Check the Streamlit logs for more details.")
+                            st.info("Check the terminal/console for error details.")
     
     with tab2:
         st.markdown("#### 📊 Usage Statistics")
@@ -2911,6 +2914,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
