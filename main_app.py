@@ -1124,22 +1124,14 @@ elif active_tab == "Usage":
     with tab3:  # NEW: Trend Analysis Tab
         st.markdown("#### 📈 Usage Trend Analysis")
         
-        # Get detailed usage data for trends
-        conn = sqlite3.connect(db.db_path)
-        detailed_usage_query = '''
-            SELECT 
-                item_name,
-                units_used,
-                purpose,
-                department,
-                date(usage_date) as usage_date,
-                strftime('%Y-%m', usage_date) as usage_month,
-                strftime('%Y-%W', usage_date) as usage_week
-            FROM usage_logs
-            ORDER BY usage_date DESC
-        '''
-        detailed_usage_df = pd.read_sql_query(detailed_usage_query, conn)
-        conn.close()
+        detailed_usage_df = db.get_usage_trends()
+
+        if not detailed_usage_df.empty:
+            # Convert to datetime and extract time components
+            detailed_usage_df['usage_date'] = pd.to_datetime(detailed_usage_df['usage_date'])
+            detailed_usage_df['usage_month'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%m')
+            detailed_usage_df['usage_week'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%W')
+            detailed_usage_df['day_of_week'] = detailed_usage_df['usage_date'].dt.day_name()
         
         if not detailed_usage_df.empty:
             # Convert to datetime
@@ -2872,6 +2864,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
