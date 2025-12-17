@@ -198,46 +198,73 @@ class SupabaseDatabase:
             print(f"=== DEBUG log_usage() START ===")
             print(f"Usage data received: {usage_data}")
             
-            # Add timestamp
-            usage_data['usage_date'] = datetime.now().isoformat()
-            usage_data['user_id'] = user.get('username') if user else 'unknown'
+            # Prepare the data for Supabase
+            # Ensure all required fields are present
+            log_data = {
+                'item_id': usage_data.get('item_id', ''),
+                'item_name': usage_data.get('item_name', ''),
+                'units_used': int(usage_data.get('units_used', 0)),
+                'purpose': usage_data.get('purpose', ''),
+                'used_by': usage_data.get('used_by', 'Unknown'),
+                'department': usage_data.get('department', ''),
+                'notes': usage_data.get('notes', ''),
+                'usage_date': datetime.now().isoformat()
+            }
             
-            print(f"Usage data after adding timestamp: {usage_data}")
+            # Add user_id if user is provided
+            if user and 'username' in user:
+                log_data['user_id'] = user['username']
             
-            # Log to usage_logs table
+            print(f"Log data to insert: {log_data}")
+            
+            # Insert into usage_logs table
             print("Inserting into usage_logs table...")
-            response = self.supabase.table("usage_logs").insert(usage_data).execute()
+            response = self.supabase.table("usage_logs").insert(log_data).execute()
             
             print(f"Response data: {response.data}")
-            print(f"Response status: Success")
-            print(f"=== DEBUG log_usage() END ===")
+            print(f"Number of records inserted: {len(response.data)}")
             
-            # Also update inventory quantity
-            if 'item_id' in usage_data and 'units_used' in usage_data:
-                print(f"Updating inventory for item_id: {usage_data['item_id']}")
-                # Get current quantity
-                current_item = self.supabase.table("inventory")\
-                    .select("quantity")\
-                    .eq("item_id", usage_data['item_id'])\
-                    .execute()
+            if response.data and len(response.data) > 0:
+                print("✅ Successfully logged usage!")
                 
-                if current_item.data:
-                    current_qty = current_item.data[0].get('quantity', 0)
-                    new_qty = current_qty - usage_data['units_used']
-                    if new_qty < 0:
-                        new_qty = 0
-                    
-                    update_response = self.supabase.table("inventory")\
-                        .update({"quantity": new_qty})\
-                        .eq("item_id", usage_data['item_id'])\
-                        .execute()
-                    
-                    print(f"Inventory updated from {current_qty} to {new_qty}")
+                # Update inventory quantity if item_id is available
+                item_id = usage_data.get('item_id')
+                units_used = int(usage_data.get('units_used', 0))
+                
+                if item_id and units_used > 0:
+                    print(f"Updating inventory for item_id: {item_id}")
+                    try:
+                        # Get current quantity
+                        current_response = self.supabase.table("inventory")\
+                            .select("quantity")\
+                            .eq("item_id", item_id)\
+                            .execute()
+                        
+                        if current_response.data:
+                            current_qty = current_response.data[0].get('quantity', 0)
+                            new_qty = current_qty - units_used
+                            if new_qty < 0:
+                                new_qty = 0
+                            
+                            print(f"Current quantity: {current_qty}, New quantity: {new_qty}")
+                            
+                            # Update inventory
+                            update_response = self.supabase.table("inventory")\
+                                .update({"quantity": new_qty})\
+                                .eq("item_id", item_id)\
+                                .execute()
+                            
+                            print(f"Inventory updated successfully")
+                    except Exception as update_error:
+                        print(f"⚠️ Could not update inventory: {update_error}")
             
+            print(f"=== DEBUG log_usage() END ===")
             return len(response.data) > 0
             
         except Exception as e:
-            print(f"❌❌❌ ERROR in log_usage(): {e}")
+            print(f"❌❌❌ ERROR in log_usage(): {str(e)}")
+            print(f"Error type: {type(e).__name__}")
+            import traceback
             print(f"Traceback: {traceback.format_exc()}")
             return False
     
@@ -375,4 +402,5 @@ class SupabaseDatabase:
         except Exception as e:
             print(f"Error getting usage trends: {e}")
             return pd.DataFrame()
+
 
