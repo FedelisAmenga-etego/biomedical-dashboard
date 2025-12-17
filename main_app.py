@@ -1124,13 +1124,47 @@ elif active_tab == "Usage":
     with tab3:  # NEW: Trend Analysis Tab
         st.markdown("#### 📈 Usage Trend Analysis")
         
-        detailed_usage_df = db.get_usage_trends() 
+        # Get detailed usage data for trends
+        conn = sqlite3.connect(db.db_path)
+        detailed_usage_query = '''
+            SELECT 
+                item_name,
+                units_used,
+                purpose,
+                department,
+                date(usage_date) as usage_date,
+                strftime('%Y-%m', usage_date) as usage_month,
+                strftime('%Y-%W', usage_date) as usage_week
+            FROM usage_logs
+            ORDER BY usage_date DESC
+        '''
+        detailed_usage_df = pd.read_sql_query(detailed_usage_query, conn)
+        conn.close()
+        
         if not detailed_usage_df.empty:
-            # Convert to datetime and extract time components
+            # Convert to datetime
             detailed_usage_df['usage_date'] = pd.to_datetime(detailed_usage_df['usage_date'])
-            detailed_usage_df['usage_month'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%m')
-            detailed_usage_df['usage_week'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%W')
-            detailed_usage_df['day_of_week'] = detailed_usage_df['usage_date'].dt.day_name()
+            
+            # Time period selector
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                time_period = st.selectbox("Time Period", 
+                                         ["Daily", "Weekly", "Monthly", "Quarterly"])
+            with col2:
+                chart_type = st.selectbox("Chart Type", 
+                                        ["Line Chart", "Bar Chart", "Area Chart"])
+            with col3:
+                top_n = st.slider("Top N Items", 5, 20, 10)
+            
+            # Item selector
+            all_items = detailed_usage_df['item_name'].unique().tolist()
+            selected_items = st.multiselect("Select specific items (or leave empty for all)", 
+                                          all_items)
+            
+            if selected_items:
+                filtered_df = detailed_usage_df[detailed_usage_df['item_name'].isin(selected_items)]
+            else:
+                filtered_df = detailed_usage_df
             
             # Group by time period
             if time_period == "Daily":
@@ -2838,8 +2872,6 @@ st.markdown(
     unsafe_allow_html=True
 
 )
-
-
 
 
 
