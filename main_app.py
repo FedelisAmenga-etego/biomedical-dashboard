@@ -36,6 +36,19 @@ def get_database():
 
 db = get_database()
 
+# Ensure get_usage_trends method exists
+if not hasattr(db, 'get_usage_trends'):
+    # Add the missing method
+    def get_usage_trends_fallback(self):
+        """Fallback method for get_usage_trends"""
+        try:
+            # Try to get usage stats as fallback
+            return self.get_usage_stats()
+        except:
+            return pd.DataFrame()
+    
+    # Add the method to the db instance
+    db.get_usage_trends = lambda: get_usage_trends_fallback(db)
 
 # Initialize systems
 processor = DataProcessor()
@@ -2887,5 +2900,6 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
