@@ -129,15 +129,15 @@ class SupabaseDatabase:
     # USAGE LOGGING (FIXED & AUDITED)
     # ------------------------------------------------------------------
     def log_usage(self, usage_data: Dict, user: Dict = None,
-                  ip_address: str = None, user_agent: str = None):
+              ip_address: str = None, user_agent: str = None):
         try:
             item_id = usage_data.get("item_id")
             units_used = int(usage_data.get("units_used", 0))
-
+    
             if not item_id or units_used <= 0:
                 return False
-
-            # 1. Insert usage log
+    
+            # 1. Insert usage log (NO user_id column)
             log_data = {
                 "item_id": item_id,
                 "item_name": usage_data.get("item_name", ""),
@@ -146,36 +146,35 @@ class SupabaseDatabase:
                 "used_by": usage_data.get("used_by", "Unknown"),
                 "department": usage_data.get("department", ""),
                 "notes": usage_data.get("notes", ""),
-                "usage_date": datetime.now().isoformat(),
-                "user_id": user.get("username") if user else None
+                "usage_date": datetime.now().isoformat()
             }
-
+    
             usage_response = self.supabase.table("usage_logs") \
                 .insert(log_data) \
                 .execute()
-
+    
             if not usage_response.data:
                 return False
-
+    
             # 2. Get current inventory quantity
             inv_response = self.supabase.table("inventory") \
                 .select("quantity") \
                 .eq("item_id", item_id) \
                 .execute()
-
+    
             if not inv_response.data:
                 return False
-
+    
             current_qty = inv_response.data[0].get("quantity", 0)
             new_qty = max(current_qty - units_used, 0)
-
+    
             # 3. Update inventory
             self.supabase.table("inventory") \
                 .update({"quantity": new_qty}) \
                 .eq("item_id", item_id) \
                 .execute()
-
-            # 4. Audit inventory change
+    
+            # 4. Audit inventory usage (THIS is where user is recorded)
             self._log_audit_event(
                 user=user,
                 action_type="INVENTORY_USAGE",
@@ -188,11 +187,11 @@ class SupabaseDatabase:
                 ip_address=ip_address,
                 user_agent=user_agent
             )
-
+    
             return True
-
+    
         except Exception as e:
-            print("Log usage error:", e)
+            print("❌ ERROR in log_usage():", e)
             print(traceback.format_exc())
             return False
 
@@ -264,3 +263,4 @@ class SupabaseDatabase:
             return stats
         except Exception:
             return pd.DataFrame()
+
