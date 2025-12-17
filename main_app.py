@@ -50,29 +50,26 @@ def get_supabase_creds():
         # Fall back to environment variables
         return os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
 
-
-# Check authentication
-# user = auth.check_auth()
-
-# def get_client_info():
-#     """Get client IP and user agent"""
-#     import streamlit as st
+# Get client info function
+def get_client_info():
+    """Get client IP and user agent"""
+    import streamlit as st
     
-#     # Try to get IP from various sources
-#     ip_address = "Unknown"
-#     user_agent = "Unknown"
+    # Try to get IP from various sources
+    ip_address = "Unknown"
+    user_agent = "Unknown"
     
-#     try:
-#         # Get headers from Streamlit request context
-#         ctx = st.runtime.get_instance()._session_mgr.list_active_sessions()[0].request
-#         if hasattr(ctx, 'headers'):
-#             headers = ctx.headers
-#             ip_address = headers.get('X-Forwarded-For', headers.get('Remote-Addr', 'Unknown'))
-#             user_agent = headers.get('User-Agent', 'Unknown')
-#     except:
-#         pass
+    try:
+        # Get headers from Streamlit request context
+        ctx = st.runtime.get_instance()._session_mgr.list_active_sessions()[0].request
+        if hasattr(ctx, 'headers'):
+            headers = ctx.headers
+            ip_address = headers.get('X-Forwarded-For', headers.get('Remote-Addr', 'Unknown'))
+            user_agent = headers.get('User-Agent', 'Unknown')
+    except:
+        pass
     
-#     return ip_address, user_agent
+    return ip_address, user_agent
 
 # Logo function matching VC.py
 def get_base64_of_image(image_path):
@@ -1514,23 +1511,42 @@ elif active_tab == "Analytics":
             with col1:
                 st.markdown("#### 📊 Stock Value Analysis")
                 
-                # Calculate estimated value
+                # Calculate estimated value - FIXED
                 quantity_col = 'quantity' if 'quantity' in inventory_df.columns else 'total_units'
-                if quantity_col in inventory_df.columns:
-                    inventory_df['estimated_value'] = inventory_df[quantity_col] * 10
-                else:
-                    inventory_df['estimated_value'] = 0
                 
-                fig = px.treemap(
-                    inventory_df,
-                    path=['category', 'item_name'],
-                    values='estimated_value',
-                    color='estimated_value',
-                    hover_data=['total_units'],
-                    title="Inventory Value by Category"
-                )
-                fig.update_layout(height=500)
-                st.plotly_chart(fig, use_container_width=True)
+                # Ensure we have the column
+                if quantity_col in inventory_df.columns:
+                    # Make a copy to avoid modifying original
+                    plot_df = inventory_df.copy()
+                    
+                    # Fill NaN values with 0
+                    plot_df[quantity_col] = plot_df[quantity_col].fillna(0).astype(float)
+                    
+                    # Create estimated value (assuming $10 per unit)
+                    plot_df['estimated_value'] = plot_df[quantity_col] * 10
+                    
+                    # Ensure we have required columns for treemap
+                    if 'category' in plot_df.columns and 'item_name' in plot_df.columns:
+                        # Filter out zero or negative values for better visualization
+                        plot_df = plot_df[plot_df['estimated_value'] > 0]
+                        
+                        if not plot_df.empty:
+                            fig = px.treemap(
+                                plot_df,
+                                path=['category', 'item_name'],
+                                values='estimated_value',
+                                color='estimated_value',
+                                hover_data=[quantity_col],
+                                title="Inventory Value by Category"
+                            )
+                            fig.update_layout(height=500)
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.info("No items with positive stock value to display.")
+                    else:
+                        st.info("Missing required columns for treemap visualization.")
+                else:
+                    st.info(f"Quantity column '{quantity_col}' not found in data.")
             
             with col2:
                 st.markdown("#### 📈 Stock Status Dashboard")
@@ -1847,12 +1863,17 @@ elif active_tab == "AuditTrails":
                 selected_record = st.text_input("Enter Record ID")
         
         if selected_record:
-            # Get audit history for this record
+            # Get audit history for this record - FIXED PARAMETERS
             record_history = db.get_audit_logs(
                 table_name=table_select,
-                record_id=selected_record,
+                # Note: The method doesn't have a record_id parameter based on your supabase_db.py
+                # We need to filter after fetching
                 limit=50
             )
+            
+            # Filter for the specific record
+            if not record_history.empty and 'record_id' in record_history.columns:
+                record_history = record_history[record_history['record_id'] == selected_record]
             
             if not record_history.empty:
                 # Display as timeline
@@ -1985,115 +2006,131 @@ elif active_tab == "AuditTrails":
     with tab3:
         st.markdown("#### 📈 Audit Statistics")
         
-        # Get audit summary
+        # Get audit summary - FIXED: create summary from existing data
         try:
-            audit_summary = db.get_audit_summary()
+            # Get audit logs to create summary
+            audit_logs_df = db.get_audit_logs(limit=1000)
             
-            # Summary cards
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Total Events", audit_summary.get('total_events', 0))
-            
-            with col2:
-                user_count = len(audit_summary.get('by_user', pd.DataFrame()))
-                st.metric("Active Users", user_count)
-            
-            with col3:
-                table_count = len(audit_summary.get('by_table', pd.DataFrame()))
-                st.metric("Tables Tracked", table_count)
-            
-            with col4:
-                action_types = len(audit_summary.get('by_action', pd.DataFrame()))
-                st.metric("Action Types", action_types)
-            
-            # Charts
-            if audit_summary.get('total_events', 0) > 0:
-                col1, col2 = st.columns(2)
+            if not audit_logs_df.empty:
+                total_events = len(audit_logs_df)
+                user_count = audit_logs_df['user_id'].nunique() if 'user_id' in audit_logs_df.columns else 0
+                table_count = audit_logs_df['table_name'].nunique() if 'table_name' in audit_logs_df.columns else 0
+                action_types_count = audit_logs_df['action_type'].nunique() if 'action_type' in audit_logs_df.columns else 0
+                
+                # Create summary DataFrames
+                by_action = audit_logs_df['action_type'].value_counts().reset_index()
+                by_action.columns = ['action_type', 'count']
+                
+                by_user = audit_logs_df.groupby('user_id').agg(
+                    user_name=('user_name', 'first'),
+                    action_count=('id', 'count')
+                ).reset_index().sort_values('action_count', ascending=False)
+                
+                by_table = audit_logs_df['table_name'].value_counts().reset_index()
+                by_table.columns = ['table_name', 'count']
+                
+                # Summary cards
+                col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    st.markdown("##### Events by Action Type")
-                    if not audit_summary['by_action'].empty:
-                        fig = px.bar(
-                            audit_summary['by_action'],
-                            x='action_type',
-                            y='count',
-                            color='count',
-                            text='count',
-                            title=""
-                        )
-                        fig.update_traces(texttemplate='%{text}', textposition='outside')
-                        fig.update_layout(height=400, plot_bgcolor='white', paper_bgcolor='white')
-                        st.plotly_chart(fig, use_container_width=True)
+                    st.metric("Total Events", total_events)
                 
                 with col2:
-                    st.markdown("##### Events by User")
-                    if not audit_summary['by_user'].empty:
-                        fig = px.bar(
-                            audit_summary['by_user'].head(10),
-                            x='user_name',
-                            y='action_count',
-                            color='action_count',
-                            text='action_count',
-                            title="Top 10 Active Users"
-                        )
-                        fig.update_traces(texttemplate='%{text}', textposition='outside')
-                        fig.update_layout(height=400, plot_bgcolor='white', paper_bgcolor='white')
-                        st.plotly_chart(fig, use_container_width=True)
+                    st.metric("Active Users", user_count)
                 
-                # Daily activity trend
-                st.markdown("##### 📅 Daily Activity Trend")
+                with col3:
+                    st.metric("Tables Tracked", table_count)
+                
+                with col4:
+                    st.metric("Action Types", action_types_count)
+                
+                # Charts
+                if total_events > 0:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("##### Events by Action Type")
+                        if not by_action.empty:
+                            fig = px.bar(
+                                by_action,
+                                x='action_type',
+                                y='count',
+                                color='count',
+                                text='count',
+                                title=""
+                            )
+                            fig.update_traces(texttemplate='%{text}', textposition='outside')
+                            fig.update_layout(height=400, plot_bgcolor='white', paper_bgcolor='white')
+                            st.plotly_chart(fig, use_container_width=True)
+                    
+                    with col2:
+                        st.markdown("##### Events by User")
+                        if not by_user.empty:
+                            fig = px.bar(
+                                by_user.head(10),
+                                x='user_name',
+                                y='action_count',
+                                color='action_count',
+                                text='action_count',
+                                title="Top 10 Active Users"
+                            )
+                            fig.update_traces(texttemplate='%{text}', textposition='outside')
+                            fig.update_layout(height=400, plot_bgcolor='white', paper_bgcolor='white')
+                            st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Daily activity trend
+                    st.markdown("##### 📅 Daily Activity Trend")
 
-                # Get audit logs and process in pandas
-                audit_logs_df = db.get_audit_logs(limit=10000)  # Get enough data
-                if not audit_logs_df.empty:
-                    audit_logs_df['timestamp'] = pd.to_datetime(audit_logs_df['timestamp'])
-                    audit_logs_df['activity_date'] = audit_logs_df['timestamp'].dt.date
+                    # Get audit logs and process in pandas
+                    audit_logs_df = db.get_audit_logs(limit=10000)  # Get enough data
+                    if not audit_logs_df.empty:
+                        audit_logs_df['timestamp'] = pd.to_datetime(audit_logs_df['timestamp'])
+                        audit_logs_df['activity_date'] = audit_logs_df['timestamp'].dt.date
+                        
+                        daily_activity = audit_logs_df.groupby('activity_date').agg(
+                            event_count=('id', 'count'),
+                            unique_users=('user_id', 'nunique')
+                        ).reset_index().sort_values('activity_date', ascending=False).head(30)
+                    else:
+                        daily_activity = pd.DataFrame(columns=['activity_date', 'event_count', 'unique_users'])
                     
-                    daily_activity = audit_logs_df.groupby('activity_date').agg(
-                        event_count=('id', 'count'),
-                        unique_users=('user_id', 'nunique')
-                    ).reset_index().sort_values('activity_date', ascending=False).head(30)
-                else:
-                    daily_activity = pd.DataFrame(columns=['activity_date', 'event_count', 'unique_users'])
-                
-                if not daily_activity.empty:
-                    fig = go.Figure()
-                    fig.add_trace(go.Bar(
-                        x=daily_activity['activity_date'],
-                        y=daily_activity['event_count'],
-                        name='Total Events',
-                        marker_color='#6A0DAD'
-                    ))
-                    fig.add_trace(go.Scatter(
-                        x=daily_activity['activity_date'],
-                        y=daily_activity['unique_users'],
-                        name='Unique Users',
-                        mode='lines+markers',
-                        line=dict(color='#10b981', width=3),
-                        yaxis='y2'
-                    ))
-                    
-                    fig.update_layout(
-                        height=400,
-                        plot_bgcolor='white',
-                        paper_bgcolor='white',
-                        xaxis_title="Date",
-                        yaxis_title="Total Events",
-                        yaxis2=dict(
-                            title="Unique Users",
-                            overlaying='y',
-                            side='right'
-                        ),
-                        legend=dict(
-                            orientation="h",
-                            yanchor="bottom",
-                            y=1.02,
-                            xanchor="right",
-                            x=1
+                    if not daily_activity.empty:
+                        fig = go.Figure()
+                        fig.add_trace(go.Bar(
+                            x=daily_activity['activity_date'],
+                            y=daily_activity['event_count'],
+                            name='Total Events',
+                            marker_color='#6A0DAD'
+                        ))
+                        fig.add_trace(go.Scatter(
+                            x=daily_activity['activity_date'],
+                            y=daily_activity['unique_users'],
+                            name='Unique Users',
+                            mode='lines+markers',
+                            line=dict(color='#10b981', width=3),
+                            yaxis='y2'
+                        ))
+                        
+                        fig.update_layout(
+                            height=400,
+                            plot_bgcolor='white',
+                            paper_bgcolor='white',
+                            xaxis_title="Date",
+                            yaxis_title="Total Events",
+                            yaxis2=dict(
+                                title="Unique Users",
+                                overlaying='y',
+                                side='right'
+                            ),
+                            legend=dict(
+                                orientation="h",
+                                yanchor="bottom",
+                                y=1.02,
+                                xanchor="right",
+                                x=1
+                            )
                         )
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No audit data available for statistics.")
                 
@@ -2163,40 +2200,64 @@ elif active_tab == "AuditTrails":
         with col3:
             if st.button("📄 Generate Summary Report", use_container_width=True):
                 try:
-                    audit_summary = db.get_audit_summary()
+                    # Get audit logs to create summary
+                    audit_logs_df = db.get_audit_logs(limit=10000)
                     
-                    # Create a summary report
-                    report_data = {
-                        'Report Generated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        'Total Audit Events': audit_summary.get('total_events', 0),
-                        'Active Users': len(audit_summary.get('by_user', pd.DataFrame())),
-                        'Tables Tracked': len(audit_summary.get('by_table', pd.DataFrame()))
-                    }
-                    
-                    # Create report DataFrame
-                    report_df = pd.DataFrame([report_data])
-                    
-                    # Also include summary tables
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        report_df.to_excel(writer, index=False, sheet_name='Summary')
+                    if not audit_logs_df.empty:
+                        # Create summary statistics
+                        total_events = len(audit_logs_df)
+                        user_count = audit_logs_df['user_id'].nunique()
+                        table_count = audit_logs_df['table_name'].nunique()
+                        action_types_count = audit_logs_df['action_type'].nunique()
                         
-                        if not audit_summary['by_action'].empty:
-                            audit_summary['by_action'].to_excel(writer, index=False, sheet_name='By_Action')
+                        # Create summary tables
+                        by_action = audit_logs_df['action_type'].value_counts().reset_index()
+                        by_action.columns = ['Action Type', 'Count']
                         
-                        if not audit_summary['by_user'].empty:
-                            audit_summary['by_user'].to_excel(writer, index=False, sheet_name='By_User')
+                        by_user = audit_logs_df.groupby('user_id').agg(
+                            User_Name=('user_name', 'first'),
+                            Action_Count=('id', 'count')
+                        ).reset_index().sort_values('Action_Count', ascending=False)
                         
-                        if not audit_summary['by_table'].empty:
-                            audit_summary['by_table'].to_excel(writer, index=False, sheet_name='By_Table')
-                    
-                    output.seek(0)
-                    st.download_button(
-                        "💾 Download Summary Report",
-                        data=output,
-                        file_name=f"audit_summary_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                        by_table = audit_logs_df['table_name'].value_counts().reset_index()
+                        by_table.columns = ['Table Name', 'Count']
+                        
+                        # Create a summary report
+                        report_data = {
+                            'Report Generated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            'Total Audit Events': total_events,
+                            'Active Users': user_count,
+                            'Tables Tracked': table_count,
+                            'Action Types': action_types_count
+                        }
+                        
+                        # Create report DataFrame
+                        report_df = pd.DataFrame([report_data])
+                        
+                        # Also include summary tables
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            report_df.to_excel(writer, index=False, sheet_name='Summary')
+                            
+                            if not by_action.empty:
+                                by_action.to_excel(writer, index=False, sheet_name='By_Action')
+                            
+                            if not by_user.empty:
+                                by_user.to_excel(writer, index=False, sheet_name='By_User')
+                            
+                            if not by_table.empty:
+                                by_table.to_excel(writer, index=False, sheet_name='By_Table')
+                        
+                        output.seek(0)
+                        st.download_button(
+                            "💾 Download Summary Report",
+                            data=output,
+                            file_name=f"audit_summary_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        
+                    else:
+                        st.warning("No audit data available for summary report.")
                     
                 except Exception as e:
                     st.error(f"Error generating summary report: {str(e)}")
@@ -2240,7 +2301,7 @@ elif active_tab == "Settings":
                         else:
                             # Verify current password
                             if db.authenticate_user(user['username'], current_password):
-                                success, message = db.reset_user_password(user['username'], new_password)
+                                success, message = db.update_user(user['username'], {'password': new_password})
                                 if success:
                                     st.success("✅ Password updated successfully!")
                                 else:
@@ -2492,9 +2553,9 @@ elif active_tab == "Settings":
                             
                             **Username:** {user_data['username']}
                             **Full Name:** {user_data['full_name']}
-                            **Role:** {user_data['role_display']}
+                            **Role:** {user_data['role']}
                             **Department:** {user_data['department']}
-                            **Created:** {user_data['created_at']}
+                            **Created:** {user_data.get('created_at', 'Unknown')}
                             
                             **This action cannot be undone!**
                             """)
@@ -2779,10 +2840,9 @@ elif active_tab == "Settings":
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     
                     if backup_type == "Full Database Backup":
-                        # Copy database file
-                        import shutil
-                        backup_file = f"backup_full_{timestamp}.db"
-                        shutil.copy2(db.db_path, backup_file)
+                        # For Supabase, we can't directly backup the database file
+                        # Instead, export all data
+                        st.info("For Supabase, please use the Supabase dashboard for full database backups.")
                         
                     elif backup_type == "Inventory Data Only":
                         # Export inventory to Excel
@@ -2793,7 +2853,8 @@ elif active_tab == "Settings":
                         with pd.ExcelWriter(output, engine='openpyxl') as writer:
                             inventory_data.to_excel(writer, index=False, sheet_name='Inventory')
                             usage_stats = db.get_usage_stats()
-                            usage_stats.to_excel(writer, index=False, sheet_name='Usage_Logs')
+                            if not usage_stats.empty:
+                                usage_stats.to_excel(writer, index=False, sheet_name='Usage_Logs')
                         output.seek(0)
                         
                         st.download_button(
@@ -2874,11 +2935,3 @@ st.markdown(
     unsafe_allow_html=True
 
 )
-
-
-
-
-
-
-
-
