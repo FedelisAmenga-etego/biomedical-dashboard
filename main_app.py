@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 import io
 import os
 import base64
-import sqlite3
 
 st.set_page_config(
     page_title="NHRC Biomedical Dashboard",
@@ -2875,6 +2874,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
