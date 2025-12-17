@@ -225,16 +225,7 @@ class SupabaseDatabase:
         except Exception as e:
             print(f"❌ ERROR in get_usage_stats(): {e}")
             return pd.DataFrame()
-
-    def get_usage_trends(self):
-        """Get detailed usage data for trend analysis"""
-        try:
-            response = self.supabase.table("usage_logs").select("*").execute()
-            return pd.DataFrame(response.data)
-        except Exception as e:
-            st.error(f"Error getting usage trends: {e}")
-            return pd.DataFrame()
-
+    
     def get_expired_items(self):
         """Get items that are expired or expiring soon."""
         try:
@@ -340,12 +331,11 @@ class SupabaseDatabase:
             print(f"❌ ERROR in get_audit_logs(): {e}")
             return pd.DataFrame()
 
-
-    
-
-
-
-
-
-
-
+    def get_usage_trends(self):
+        """Get detailed usage data for trend analysis"""
+        try:
+            response = self.supabase.table("usage_logs").select("*").execute()
+            return pd.DataFrame(response.data)
+        except Exception as e:
+            print(f"Error getting usage trends: {e}")
+            return pd.DataFrame()
