@@ -163,13 +163,13 @@ class SupabaseDatabase:
             return pd.DataFrame()
     
     def get_all_users(self):
+        """Get all users from the database"""
         try:
             response = self.supabase.table("users").select("*").execute()
             return pd.DataFrame(response.data)
         except Exception as e:
-            print(f"Error in get_all_users: {e}")
+            st.error(f"Error getting users: {e}")
             return pd.DataFrame()
-    
     
     def add_inventory_item(self, item_data: Dict, user: Dict = None):
         """Add a new inventory item."""
@@ -340,6 +340,7 @@ class SupabaseDatabase:
         except Exception as e:
             st.error(f"Error getting usage trends: {e}")
             return pd.DataFrame()
+
 
 
 
