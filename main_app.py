@@ -1121,19 +1121,20 @@ elif active_tab == "Usage":
     with tab3:  # NEW: Trend Analysis Tab
         st.markdown("#### 📈 Usage Trend Analysis")
         
+        # Try to get usage trends data
         try:
             detailed_usage_df = db.get_usage_trends()
             
-            if not detailed_usage_df.empty:
-                # Convert to datetime and extract time components
-                detailed_usage_df['usage_date'] = pd.to_datetime(detailed_usage_df['usage_date'])
-                detailed_usage_df['usage_month'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%m')
-                detailed_usage_df['usage_week'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%W')
-                detailed_usage_df['day_of_week'] = detailed_usage_df['usage_date'].dt.day_name()
-            
-            if not detailed_usage_df.empty:
-                # Convert to datetime
-                detailed_usage_df['usage_date'] = pd.to_datetime(detailed_usage_df['usage_date'])
+            if detailed_usage_df is None or detailed_usage_df.empty:
+                st.info("No usage data available for trend analysis. Start logging usage to see trends.")
+            else:
+                # Process the data
+                if 'usage_date' in detailed_usage_df.columns:
+                    # Convert to datetime and extract time components
+                    detailed_usage_df['usage_date'] = pd.to_datetime(detailed_usage_df['usage_date'])
+                    detailed_usage_df['usage_month'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%m')
+                    detailed_usage_df['usage_week'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%W')
+                    detailed_usage_df['day_of_week'] = detailed_usage_df['usage_date'].dt.day_name()
                 
                 # Time period selector
                 col1, col2, col3 = st.columns(3)
@@ -1147,7 +1148,11 @@ elif active_tab == "Usage":
                     top_n = st.slider("Top N Items", 5, 20, 10)
                 
                 # Item selector
-                all_items = detailed_usage_df['item_name'].unique().tolist()
+                if 'item_name' in detailed_usage_df.columns:
+                    all_items = detailed_usage_df['item_name'].unique().tolist()
+                else:
+                    all_items = []
+                
                 selected_items = st.multiselect("Select specific items (or leave empty for all)", 
                                               all_items)
                 
@@ -1156,226 +1161,164 @@ elif active_tab == "Usage":
                 else:
                     filtered_df = detailed_usage_df
                 
-                # Group by time period
-                if time_period == "Daily":
-                    grouped = filtered_df.groupby(['usage_date', 'item_name'])['units_used'].sum().reset_index()
-                    x_col = 'usage_date'
-                    title_suffix = "Daily"
-                elif time_period == "Weekly":
-                    filtered_df['week_start'] = filtered_df['usage_date'] - pd.to_timedelta(filtered_df['usage_date'].dt.dayofweek, unit='D')
-                    grouped = filtered_df.groupby(['week_start', 'item_name'])['units_used'].sum().reset_index()
-                    x_col = 'week_start'
-                    title_suffix = "Weekly"
-                elif time_period == "Monthly":
-                    filtered_df['month'] = filtered_df['usage_date'].dt.to_period('M').dt.to_timestamp()
-                    grouped = filtered_df.groupby(['month', 'item_name'])['units_used'].sum().reset_index()
-                    x_col = 'month'
-                    title_suffix = "Monthly"
-                else:  # Quarterly
-                    filtered_df['quarter'] = filtered_df['usage_date'].dt.to_period('Q').dt.to_timestamp()
-                    grouped = filtered_df.groupby(['quarter', 'item_name'])['units_used'].sum().reset_index()
-                    x_col = 'quarter'
-                    title_suffix = "Quarterly"
-                
-                # Get top N items by total usage for the trend chart
-                total_usage_by_item = filtered_df.groupby('item_name')['units_used'].sum().nlargest(top_n)
-                top_items_list = total_usage_by_item.index.tolist()
-                trend_df = grouped[grouped['item_name'].isin(top_items_list)]
-                
-                # Create trend chart
-                if not trend_df.empty:
-                    st.markdown(f"##### 📊 {title_suffix} Usage Trends (Top {top_n} Items)")
+                if not filtered_df.empty and 'units_used' in filtered_df.columns:
+                    # Group by time period
+                    if time_period == "Daily":
+                        grouped = filtered_df.groupby(['usage_date', 'item_name'])['units_used'].sum().reset_index()
+                        x_col = 'usage_date'
+                        title_suffix = "Daily"
+                    elif time_period == "Weekly":
+                        filtered_df['week_start'] = filtered_df['usage_date'] - pd.to_timedelta(filtered_df['usage_date'].dt.dayofweek, unit='D')
+                        grouped = filtered_df.groupby(['week_start', 'item_name'])['units_used'].sum().reset_index()
+                        x_col = 'week_start'
+                        title_suffix = "Weekly"
+                    elif time_period == "Monthly":
+                        filtered_df['month'] = filtered_df['usage_date'].dt.to_period('M').dt.to_timestamp()
+                        grouped = filtered_df.groupby(['month', 'item_name'])['units_used'].sum().reset_index()
+                        x_col = 'month'
+                        title_suffix = "Monthly"
+                    else:  # Quarterly
+                        filtered_df['quarter'] = filtered_df['usage_date'].dt.to_period('Q').dt.to_timestamp()
+                        grouped = filtered_df.groupby(['quarter', 'item_name'])['units_used'].sum().reset_index()
+                        x_col = 'quarter'
+                        title_suffix = "Quarterly"
                     
-                    if chart_type == "Line Chart":
-                        fig = px.line(
-                            trend_df,
-                            x=x_col,
-                            y='units_used',
-                            color='item_name',
-                            title=f"{title_suffix} Usage Trends",
-                            labels={'units_used': 'Units Used', x_col: 'Date'},
-                            markers=True
-                        )
-                    elif chart_type == "Bar Chart":
-                        fig = px.bar(
-                            trend_df,
-                            x=x_col,
-                            y='units_used',
-                            color='item_name',
-                            title=f"{title_suffix} Usage Trends",
-                            labels={'units_used': 'Units Used', x_col: 'Date'},
-                            barmode='stack'
-                        )
-                    else:  # Area Chart
-                        fig = px.area(
-                            trend_df,
-                            x=x_col,
-                            y='units_used',
-                            color='item_name',
-                            title=f"{title_suffix} Usage Trends",
-                            labels={'units_used': 'Units Used', x_col: 'Date'}
-                        )
+                    # Get top N items by total usage for the trend chart
+                    total_usage_by_item = filtered_df.groupby('item_name')['units_used'].sum().nlargest(top_n)
+                    top_items_list = total_usage_by_item.index.tolist()
+                    trend_df = grouped[grouped['item_name'].isin(top_items_list)]
                     
-                    fig.update_layout(
-                        height=500,
-                        plot_bgcolor='white',
-                        paper_bgcolor='white',
-                        hovermode='x unified',
-                        xaxis_title="Date",
-                        yaxis_title="Units Used",
-                        legend_title="Item Name"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # Department-wise usage
-                st.markdown("##### 🏢 Department-wise Usage")
-                dept_usage = filtered_df.groupby(['department', 'item_name'])['units_used'].sum().reset_index()
-                top_dept_items = dept_usage.groupby('item_name')['units_used'].sum().nlargest(10).index.tolist()
-                dept_usage_filtered = dept_usage[dept_usage['item_name'].isin(top_dept_items)]
-                
-                if not dept_usage_filtered.empty:
-                    fig2 = px.sunburst(
-                        dept_usage_filtered,
-                        path=['department', 'item_name'],
-                        values='units_used',
-                        title="Department-wise Usage Distribution",
-                        color='units_used',
-                        color_continuous_scale='Viridis'
-                    )
-                    fig2.update_layout(height=500)
-                    st.plotly_chart(fig2, use_container_width=True)
-                
-                # Usage heatmap by day of week and hour
-                st.markdown("##### 🕒 Usage Patterns")
-                col_h1, col_h2 = st.columns(2)
-                
-                with col_h1:
-                    # Day of week heatmap
-                    filtered_df['day_of_week'] = filtered_df['usage_date'].dt.day_name()
-                    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                    filtered_df['day_of_week'] = pd.Categorical(filtered_df['day_of_week'], categories=day_order, ordered=True)
-                    day_usage = filtered_df.groupby(['day_of_week', 'item_name'])['units_used'].sum().reset_index()
-                    
-                    # Pivot for heatmap
-                    day_pivot = day_usage.pivot(index='item_name', columns='day_of_week', values='units_used').fillna(0)
-                    
-                    if not day_pivot.empty:
-                        fig3 = px.imshow(
-                            day_pivot,
-                            labels=dict(x="Day of Week", y="Item", color="Units Used"),
-                            title="Usage by Day of Week",
-                            color_continuous_scale='Viridis',
-                            aspect="auto"
-                        )
-                        fig3.update_layout(height=400)
-                        st.plotly_chart(fig3, use_container_width=True)
-                
-                with col_h2:
-                    # Purpose-wise breakdown
-                    purpose_usage = filtered_df.groupby('purpose')['units_used'].sum().reset_index()
-                    purpose_usage = purpose_usage.sort_values('units_used', ascending=False).head(10)
-                    
-                    if not purpose_usage.empty:
-                        fig4 = px.bar(
-                            purpose_usage,
-                            x='units_used',
-                            y='purpose',
-                            orientation='h',
-                            color='units_used',
-                            title="Top 10 Usage Purposes",
-                            text='units_used'
-                        )
-                        fig4.update_traces(texttemplate='%{text:,}', textposition='outside')
-                        fig4.update_layout(height=400, yaxis={'categoryorder':'total ascending'})
-                        st.plotly_chart(fig4, use_container_width=True)
-                
-                # Forecasting section
-                st.markdown("##### 🔮 Usage Forecasting")
-                if len(filtered_df) > 10:  # Need enough data for forecasting
-                    forecast_col1, forecast_col2 = st.columns(2)
-                    
-                    with forecast_col1:
-                        forecast_item = st.selectbox("Select item for forecast", top_items_list)
-                        forecast_days = st.slider("Forecast days ahead", 7, 90, 30)
-                    
-                    if forecast_item:
-                        item_data = filtered_df[filtered_df['item_name'] == forecast_item]
-                        if len(item_data) > 5:  # Need minimum data points
-                            # Simple moving average forecast
-                            item_data = item_data.set_index('usage_date').resample('D').sum().fillna(0)
-                            
-                            # Calculate moving average
-                            window = min(7, len(item_data))
-                            item_data['forecast'] = item_data['units_used'].rolling(window=window).mean()
-                            
-                            # Create future dates
-                            last_date = item_data.index[-1]
-                            future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), 
-                                                        periods=forecast_days, freq='D')
-                            
-                            # Simple forecast (using last known value)
-                            last_value = item_data['forecast'].iloc[-1]
-                            forecast_series = pd.Series([last_value] * forecast_days, index=future_dates)
-                            
-                            # Combine historical and forecast
-                            combined = pd.concat([
-                                item_data[['units_used', 'forecast']],
-                                pd.DataFrame({'forecast': forecast_series})
-                            ])
-                            
-                            fig5 = go.Figure()
-                            fig5.add_trace(go.Scatter(
-                                x=combined.index,
-                                y=combined['units_used'],
-                                mode='markers+lines',
-                                name='Actual Usage',
-                                line=dict(color='blue', width=2)
-                            ))
-                            fig5.add_trace(go.Scatter(
-                                x=combined.index,
-                                y=combined['forecast'],
-                                mode='lines',
-                                name='Forecast',
-                                line=dict(color='orange', width=2, dash='dash')
-                            ))
-                            fig5.update_layout(
-                                title=f"Usage Forecast for {forecast_item}",
-                                height=400,
-                                plot_bgcolor='white',
-                                paper_bgcolor='white',
-                                xaxis_title="Date",
-                                yaxis_title="Units Used"
+                    # Create trend chart
+                    if not trend_df.empty:
+                        st.markdown(f"##### 📊 {title_suffix} Usage Trends (Top {top_n} Items)")
+                        
+                        if chart_type == "Line Chart":
+                            fig = px.line(
+                                trend_df,
+                                x=x_col,
+                                y='units_used',
+                                color='item_name',
+                                title=f"{title_suffix} Usage Trends",
+                                labels={'units_used': 'Units Used', x_col: 'Date'},
+                                markers=True
                             )
-                            st.plotly_chart(fig5, use_container_width=True)
+                        elif chart_type == "Bar Chart":
+                            fig = px.bar(
+                                trend_df,
+                                x=x_col,
+                                y='units_used',
+                                color='item_name',
+                                title=f"{title_suffix} Usage Trends",
+                                labels={'units_used': 'Units Used', x_col: 'Date'},
+                                barmode='stack'
+                            )
+                        else:  # Area Chart
+                            fig = px.area(
+                                trend_df,
+                                x=x_col,
+                                y='units_used',
+                                color='item_name',
+                                title=f"{title_suffix} Usage Trends",
+                                labels={'units_used': 'Units Used', x_col: 'Date'}
+                            )
+                        
+                        fig.update_layout(
+                            height=500,
+                            plot_bgcolor='white',
+                            paper_bgcolor='white',
+                            hovermode='x unified',
+                            xaxis_title="Date",
+                            yaxis_title="Units Used",
+                            legend_title="Item Name"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Department-wise usage
+                    st.markdown("##### 🏢 Department-wise Usage")
+                    if 'department' in filtered_df.columns:
+                        dept_usage = filtered_df.groupby(['department', 'item_name'])['units_used'].sum().reset_index()
+                        top_dept_items = dept_usage.groupby('item_name')['units_used'].sum().nlargest(10).index.tolist()
+                        dept_usage_filtered = dept_usage[dept_usage['item_name'].isin(top_dept_items)]
+                        
+                        if not dept_usage_filtered.empty:
+                            fig2 = px.sunburst(
+                                dept_usage_filtered,
+                                path=['department', 'item_name'],
+                                values='units_used',
+                                title="Department-wise Usage Distribution",
+                                color='units_used',
+                                color_continuous_scale='Viridis'
+                            )
+                            fig2.update_layout(height=500)
+                            st.plotly_chart(fig2, use_container_width=True)
+                    
+                    # Usage heatmap by day of week and hour
+                    st.markdown("##### 🕒 Usage Patterns")
+                    col_h1, col_h2 = st.columns(2)
+                    
+                    with col_h1:
+                        # Day of week heatmap
+                        filtered_df['day_of_week'] = filtered_df['usage_date'].dt.day_name()
+                        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                        filtered_df['day_of_week'] = pd.Categorical(filtered_df['day_of_week'], categories=day_order, ordered=True)
+                        day_usage = filtered_df.groupby(['day_of_week', 'item_name'])['units_used'].sum().reset_index()
+                        
+                        # Pivot for heatmap
+                        day_pivot = day_usage.pivot(index='item_name', columns='day_of_week', values='units_used').fillna(0)
+                        
+                        if not day_pivot.empty:
+                            fig3 = px.imshow(
+                                day_pivot,
+                                labels=dict(x="Day of Week", y="Item", color="Units Used"),
+                                title="Usage by Day of Week",
+                                color_continuous_scale='Viridis',
+                                aspect="auto"
+                            )
+                            fig3.update_layout(height=400)
+                            st.plotly_chart(fig3, use_container_width=True)
+                    
+                    with col_h2:
+                        # Purpose-wise breakdown
+                        if 'purpose' in filtered_df.columns:
+                            purpose_usage = filtered_df.groupby('purpose')['units_used'].sum().reset_index()
+                            purpose_usage = purpose_usage.sort_values('units_used', ascending=False).head(10)
                             
-                            with forecast_col2:
-                                avg_daily = item_data['units_used'].mean()
-                                total_forecast = last_value * forecast_days
-                                st.metric("Average Daily Usage", f"{avg_daily:.1f} units")
-                                st.metric(f"Forecast for next {forecast_days} days", f"{total_forecast:.0f} units")
+                            if not purpose_usage.empty:
+                                fig4 = px.bar(
+                                    purpose_usage,
+                                    x='units_used',
+                                    y='purpose',
+                                    orientation='h',
+                                    color='units_used',
+                                    title="Top 10 Usage Purposes",
+                                    text='units_used'
+                                )
+                                fig4.update_traces(texttemplate='%{text:,}', textposition='outside')
+                                fig4.update_layout(height=400, yaxis={'categoryorder':'total ascending'})
+                                st.plotly_chart(fig4, use_container_width=True)
+                    
+                    # Export detailed trends
+                    st.markdown("##### 📥 Export Trend Data")
+                    csv = detailed_usage_df.to_csv(index=False)
+                    st.download_button(
+                        "💾 Download Detailed Usage Data",
+                        data=csv,
+                        file_name=f"usage_trends_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv"
+                    )
                 else:
-                    st.info("Need more usage data for forecasting (minimum 10 records).")
-                
-                # Export detailed trends
-                st.markdown("##### 📥 Export Trend Data")
-                csv = detailed_usage_df.to_csv(index=False)
-                st.download_button(
-                    "💾 Download Detailed Usage Data",
-                    data=csv,
-                    file_name=f"usage_trends_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                )
-                
-            else:
-                st.info("No usage data available for trend analysis. Start logging usage to see trends.")
-                
+                    st.info("Usage data doesn't contain required columns for analysis.")
+                    
+        except AttributeError as e:
+            st.error(f"Database method error: {str(e)}")
+            st.info("The get_usage_trends() method might not be available. Check if the supabase_db.py file has this method defined.")
         except Exception as e:
             st.error(f"Error loading usage trends: {str(e)}")
             st.info("There was an error loading usage trend data. This might be because:")
-            st.info("1. The usage_logs table doesn't exist yet")
+            st.info("1. The usage_logs table doesn't exist yet in your Supabase database")
             st.info("2. There's a connection issue with the database")
             st.info("3. The table structure might be different than expected")
-            st.info("Try logging some usage data first, then check this tab again.")
+                
 # EXPIRY MANAGEMENT TAB
 elif active_tab == "Expiry":
     st.markdown('<div class="section-header"><h2>⏰ Expiry Management</h2></div>', unsafe_allow_html=True)
@@ -2944,4 +2887,5 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
