@@ -430,80 +430,94 @@ class SupabaseDatabase:
             print(f"❌ ERROR in _log_audit_event(): {e}")
             return False
 
-    def add_inventory_item(self, item_data: Dict, user: Dict = None, ip_address: str = None, user_agent: str = None):
-        """Add a new inventory item with audit logging."""
+    def add_inventory_item(self, item_data: Dict, user: Dict = None):
         try:
             response = self.supabase.table("inventory").insert(item_data).execute()
-            
-            if len(response.data) > 0:
-                # Log the audit event
-                if user:
-                    self._log_audit_event(
-                        user=user,
-                        action_type="CREATE",
-                        table_name="inventory",
-                        record_id=item_data.get('item_id'),
-                        notes=f"Added new item: {item_data.get('item_name')}",
-                        ip_address=ip_address,
-                        user_agent=user_agent
-                    )
+    
+            if response.data:
+                self.log_audit(
+                    user=user,
+                    action_type="ADD",
+                    table_name="inventory",
+                    record_id=item_data["item_id"],
+                    old_data=None,
+                    new_data=item_data
+                )
                 return True
+    
             return False
         except Exception as e:
             print(f"❌ ERROR in add_inventory_item(): {e}")
             return False
 
-    def update_inventory_item(self, item_id: str, updates: Dict, user: Dict = None, ip_address: str = None, user_agent: str = None):
-        """Update an inventory item with audit logging."""
+
+    def update_inventory_item(self, item_id: str, updates: Dict, user: Dict = None):
         try:
-            # Get old values for audit logging
-            old_response = self.supabase.table("inventory")\
-                .select("*")\
-                .eq("item_id", item_id)\
+            # Fetch old record
+            old_response = self.supabase.table("inventory") \
+                .select("*") \
+                .eq("item_id", item_id) \
                 .execute()
-            
-            if not old_response.data:
-                return False
-            
-            old_data = old_response.data[0]
-            
-            # Perform the update
-            response = self.supabase.table("inventory")\
-                .update(updates)\
-                .eq("item_id", item_id)\
+    
+            old_data = old_response.data[0] if old_response.data else {}
+    
+            # Apply update
+            response = self.supabase.table("inventory") \
+                .update(updates) \
+                .eq("item_id", item_id) \
                 .execute()
-            
-            if len(response.data) > 0:
-                # Log audit events for each changed field
-                if user:
-                    for field, new_value in updates.items():
-                        old_value = old_data.get(field)
-                        if old_value != new_value:
-                            self._log_audit_event(
-                                user=user,
-                                action_type="UPDATE",
-                                table_name="inventory",
-                                record_id=item_id,
-                                field_name=field,
-                                old_value=old_value,
-                                new_value=new_value,
-                                notes=f"Updated {field} for item ID: {item_id}",
-                                ip_address=ip_address,
-                                user_agent=user_agent
-                            )
+    
+            if response.data:
+                self.log_audit(
+                    user=user,
+                    action_type="UPDATE",
+                    table_name="inventory",
+                    record_id=item_id,
+                    old_data=old_data,
+                    new_data=updates
+                )
                 return True
+    
             return False
         except Exception as e:
             print(f"❌ ERROR in update_inventory_item(): {e}")
             return False
+
+
+    def log_audit(
+    self,
+    user: dict,
+    action_type: str,
+    table_name: str,
+    record_id: str,
+    old_data: dict = None,
+    new_data: dict = None,
+):
+        try:
+            audit_entry = {
+                "user_id": user.get("username") if user else "system",
+                "action_type": action_type,
+                "table_name": table_name,
+                "record_id": record_id,
+                "old_data": old_data,
+                "new_data": new_data,
+                "timestamp": datetime.now().isoformat()
+            }
+    
+            self.supabase.table("audit_logs").insert(audit_entry).execute()
+            return True
+        except Exception as e:
+            print("❌ Audit log failed:", e)
+            return False
+
     
     def log_usage(self, usage_data: Dict, user: Dict = None, ip_address: str = None, user_agent: str = None):
-        """Log item usage with audit logging."""
+        """Log item usage with full audit logging."""
         try:
             print(f"=== DEBUG log_usage() START ===")
             print(f"Usage data received: {usage_data}")
-            
-            # Prepare the data for Supabase
+    
+            # 1. Insert usage log
             log_data = {
                 'item_id': usage_data.get('item_id', ''),
                 'item_name': usage_data.get('item_name', ''),
@@ -514,77 +528,66 @@ class SupabaseDatabase:
                 'notes': usage_data.get('notes', ''),
                 'usage_date': datetime.now().isoformat()
             }
-            
-            # Add user_id if user is provided
+    
             if user and 'username' in user:
                 log_data['user_id'] = user['username']
-            
-            print(f"Log data to insert: {log_data}")
-            
-            # Insert into usage_logs table
-            print("Inserting into usage_logs table...")
+    
             response = self.supabase.table("usage_logs").insert(log_data).execute()
-            
-            print(f"Response data: {response.data}")
-            print(f"Number of records inserted: {len(response.data)}")
-            
-            if response.data and len(response.data) > 0:
-                print("✅ Successfully logged usage!")
-                
-                # Log audit event
-                if user:
-                    self._log_audit_event(
+    
+            if not response.data:
+                return False
+    
+            print("✅ Usage logged successfully")
+    
+            # 2. Audit usage event
+            self.log_audit(
+                user=user,
+                action_type="USAGE",
+                table_name="usage_logs",
+                record_id=str(response.data[0].get("id")),
+                old_data=None,
+                new_data=log_data
+            )
+    
+            # 3. Update inventory + audit stock mutation
+            item_id = usage_data.get('item_id')
+            units_used = int(usage_data.get('units_used', 0))
+    
+            if item_id and units_used > 0:
+                current_response = self.supabase.table("inventory") \
+                    .select("quantity") \
+                    .eq("item_id", item_id) \
+                    .execute()
+    
+                if current_response.data:
+                    current_qty = current_response.data[0].get('quantity', 0)
+                    new_qty = max(current_qty - units_used, 0)
+    
+                    # Update inventory
+                    self.supabase.table("inventory") \
+                        .update({"quantity": new_qty}) \
+                        .eq("item_id", item_id) \
+                        .execute()
+    
+                    # 4. Audit inventory quantity change (THIS WAS MISSING)
+                    self.log_audit(
                         user=user,
-                        action_type="USAGE",
-                        table_name="usage_logs",
-                        record_id=str(response.data[0].get('id')),
-                        notes=f"Logged usage of {usage_data.get('units_used')} units for {usage_data.get('item_name')}",
-                        ip_address=ip_address,
-                        user_agent=user_agent
+                        action_type="INVENTORY_USAGE",
+                        table_name="inventory",
+                        record_id=item_id,
+                        old_data={"quantity": current_qty},
+                        new_data={"quantity": new_qty}
                     )
-                
-                # Update inventory quantity
-                item_id = usage_data.get('item_id')
-                units_used = int(usage_data.get('units_used', 0))
-                
-                if item_id and units_used > 0:
-                    print(f"Updating inventory for item_id: {item_id}")
-                    try:
-                        # Get current quantity
-                        current_response = self.supabase.table("inventory")\
-                            .select("quantity")\
-                            .eq("item_id", item_id)\
-                            .execute()
-                        
-                        if current_response.data:
-                            current_qty = current_response.data[0].get('quantity', 0)
-                            new_qty = current_qty - units_used
-                            if new_qty < 0:
-                                new_qty = 0
-                            
-                            print(f"Current quantity: {current_qty}, New quantity: {new_qty}")
-                            
-                            # Update inventory with audit logging
-                            update_data = {"quantity": new_qty}
-                            self.update_inventory_item(
-                                item_id=item_id,
-                                updates=update_data,
-                                user=user,
-                                ip_address=ip_address,
-                                user_agent=user_agent
-                            )
-                    except Exception as update_error:
-                        print(f"⚠️ Could not update inventory: {update_error}")
-            
+    
             print(f"=== DEBUG log_usage() END ===")
-            return len(response.data) > 0
-            
+            return True
+    
         except Exception as e:
-            print(f"❌❌❌ ERROR in log_usage(): {str(e)}")
-            print(f"Error type: {type(e).__name__}")
+            print(f"❌ ERROR in log_usage(): {e}")
             import traceback
-            print(f"Traceback: {traceback.format_exc()}")
+            print(traceback.format_exc())
             return False
+
 
 
 
