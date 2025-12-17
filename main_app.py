@@ -1516,7 +1516,11 @@ elif active_tab == "Analytics":
                 st.markdown("#### 📊 Stock Value Analysis")
                 
                 # Calculate estimated value
-                inventory_df['estimated_value'] = inventory_df['total_units'] * 10  # Assuming $10 per unit
+                quantity_col = 'quantity' if 'quantity' in inventory_df.columns else 'total_units'
+                if quantity_col in inventory_df.columns:
+                    inventory_df['estimated_value'] = inventory_df[quantity_col] * 10
+                else:
+                    inventory_df['estimated_value'] = 0
                 
                 fig = px.treemap(
                     inventory_df,
@@ -1677,10 +1681,12 @@ elif active_tab == "AuditTrails":
                                       ["All", "inventory", "users", "usage_logs"])
         
         with col4:
-            # Get all users who have performed actions
-            conn = sqlite3.connect(db.db_path)
-            users_with_actions = pd.read_sql_query("SELECT DISTINCT user_id, user_name FROM audit_logs ORDER BY user_name", conn)
-            conn.close()
+            # Get audit logs from Supabase
+            audit_logs_df = db.get_audit_logs(limit=1000)
+            if not audit_logs_df.empty:
+                users_with_actions = audit_logs_df[['user_id', 'user_name']].drop_duplicates()
+            else:
+                users_with_actions = pd.DataFrame(columns=['user_id', 'user_name'])
             
             user_options = ["All"]
             if not users_with_actions.empty:
@@ -2038,21 +2044,19 @@ elif active_tab == "AuditTrails":
                 
                 # Daily activity trend
                 st.markdown("##### 📅 Daily Activity Trend")
-                
-                # Get daily activity
-                conn = sqlite3.connect(db.db_path)
-                daily_query = '''
-                    SELECT 
-                        date(timestamp) as activity_date,
-                        COUNT(*) as event_count,
-                        COUNT(DISTINCT user_id) as unique_users
-                    FROM audit_logs
-                    GROUP BY date(timestamp)
-                    ORDER BY activity_date DESC
-                    LIMIT 30
-                '''
-                daily_activity = pd.read_sql_query(daily_query, conn)
-                conn.close()
+
+                # Get audit logs and process in pandas
+                audit_logs_df = db.get_audit_logs(limit=10000)  # Get enough data
+                if not audit_logs_df.empty:
+                    audit_logs_df['timestamp'] = pd.to_datetime(audit_logs_df['timestamp'])
+                    audit_logs_df['activity_date'] = audit_logs_df['timestamp'].dt.date
+                    
+                    daily_activity = audit_logs_df.groupby('activity_date').agg(
+                        event_count=('id', 'count'),
+                        unique_users=('user_id', 'nunique')
+                    ).reset_index().sort_values('activity_date', ascending=False).head(30)
+                else:
+                    daily_activity = pd.DataFrame(columns=['activity_date', 'event_count', 'unique_users'])
                 
                 if not daily_activity.empty:
                     fig = go.Figure()
@@ -2273,7 +2277,15 @@ elif active_tab == "Settings":
             
             if not users_df.empty:
                 # Format the dataframe for better display
-                display_df = users_df[['username', 'full_name', 'role_display', 'department', 'created_at']].copy()
+                available_cols = users_df.columns.tolist()
+                display_cols = ['username', 'full_name', 'department']
+                if 'role_display' in available_cols:
+                    display_cols.append('role_display')
+                elif 'role' in available_cols:
+                    display_cols.append('role')
+                if 'created_at' in available_cols:
+                    display_cols.append('created_at')
+                display_df = users_df[display_cols].copy()
                 display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
                 display_df.columns = ['Username', 'Full Name', 'Role', 'Department', 'Created At']
                 
@@ -2864,6 +2876,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
