@@ -530,4 +530,158 @@ class SupabaseDatabase:
                 return pd.DataFrame()
 
 
+        # ------------------------------------------------------------------
+    # USER MANAGEMENT (FOR SETTINGS TAB)
+    # ------------------------------------------------------------------
+    def get_all_users(self):
+        """Get all users from the database"""
+        try:
+            response = self.supabase.table("users") \
+                .select("*") \
+                .order("username") \
+                .execute()
+            
+            return pd.DataFrame(response.data)
+            
+        except Exception as e:
+            print("Get all users error:", e)
+            return pd.DataFrame()
+
+    def create_user(self, user_data: Dict, current_user: Dict = None, 
+                   ip_address: str = None, user_agent: str = None):
+        """Create a new user with password hashing"""
+        try:
+            # Hash password if provided
+            password = user_data.pop('password', '')
+            if password:
+                salt = bcrypt.gensalt()
+                user_data['password_hash'] = bcrypt.hashpw(password.encode(), salt).decode()
+            
+            # Set default role if not provided
+            if 'role' not in user_data:
+                user_data['role'] = 'user'
+            
+            # Add creation timestamp
+            user_data['created_at'] = datetime.now().isoformat()
+            
+            response = self.supabase.table("users").insert(user_data).execute()
+            
+            if response.data:
+                # Audit the creation
+                self._log_audit_event(
+                    user=current_user,
+                    action_type="USER_CREATE",
+                    table_name="users",
+                    record_id=user_data.get('username'),
+                    notes=f"Created user {user_data.get('username')}",
+                    ip_address=ip_address,
+                    user_agent=user_agent
+                )
+                return True, "User created successfully"
+            return False, "Failed to create user"
+            
+        except Exception as e:
+            print("Create user error:", e)
+            return False, str(e)
+
+    def update_user(self, username: str, updates: Dict, current_user: Dict = None,
+                   ip_address: str = None, user_agent: str = None):
+        """Update user information"""
+        try:
+            # Get current user data for audit
+            current_response = self.supabase.table("users") \
+                .select("*") \
+                .eq("username", username) \
+                .execute()
+            
+            old_data = current_response.data[0] if current_response.data else {}
+            
+            # If password is being updated, hash it
+            if 'password' in updates:
+                password = updates.pop('password')
+                salt = bcrypt.gensalt()
+                updates['password_hash'] = bcrypt.hashpw(password.encode(), salt).decode()
+                updates['last_password_change'] = datetime.now().isoformat()
+            
+            response = self.supabase.table("users") \
+                .update(updates) \
+                .eq("username", username) \
+                .execute()
+            
+            if response.data:
+                # Audit the update for each changed field
+                for field, new_value in updates.items():
+                    old_value = old_data.get(field)
+                    if field != 'password_hash':  # Don't log password hash
+                        self._log_audit_event(
+                            user=current_user,
+                            action_type="USER_UPDATE",
+                            table_name="users",
+                            record_id=username,
+                            field_name=field,
+                            old_value=old_value,
+                            new_value=new_value,
+                            notes=f"Updated user {username}",
+                            ip_address=ip_address,
+                            user_agent=user_agent
+                        )
+                return True, "User updated successfully"
+            return False, "Failed to update user"
+            
+        except Exception as e:
+            print("Update user error:", e)
+            return False, str(e)
+
+    def delete_user(self, username: str, current_user: Dict = None,
+                   ip_address: str = None, user_agent: str = None):
+        """Delete a user from the system"""
+        try:
+            # Get user data before deletion for audit
+            current_response = self.supabase.table("users") \
+                .select("*") \
+                .eq("username", username) \
+                .execute()
+            
+            user_data = current_response.data[0] if current_response.data else {}
+            
+            response = self.supabase.table("users") \
+                .delete() \
+                .eq("username", username) \
+                .execute()
+            
+            if response.data:
+                # Audit the deletion
+                self._log_audit_event(
+                    user=current_user,
+                    action_type="USER_DELETE",
+                    table_name="users",
+                    record_id=username,
+                    old_value=str(user_data),
+                    new_value=None,
+                    notes=f"Deleted user {username}",
+                    ip_address=ip_address,
+                    user_agent=user_agent
+                )
+                return True, "User deleted successfully"
+            return False, "Failed to delete user"
+            
+        except Exception as e:
+            print("Delete user error:", e)
+            return False, str(e)
+
+    def get_user_by_username(self, username: str):
+        """Get a specific user by username"""
+        try:
+            response = self.supabase.table("users") \
+                .select("*") \
+                .eq("username", username) \
+                .execute()
+            
+            if response.data:
+                return response.data[0]
+            return None
+            
+        except Exception as e:
+            print("Get user by username error:", e)
+            return None
 
