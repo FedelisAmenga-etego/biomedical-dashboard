@@ -1441,10 +1441,11 @@ elif active_tab == "Expiry":
     
     expired_items = db.get_expired_items()
     
-    # Status cards
     if not expired_items.empty and 'days_to_expiry' in expired_items.columns:
+        # Status cards
         col1, col2, col3, col4 = st.columns(4)
         
+        # Calculate counts for different expiry categories
         expired = (expired_items['days_to_expiry'] <= 0).sum()
         expiring_30 = ((expired_items['days_to_expiry'] > 0) & 
                       (expired_items['days_to_expiry'] <= 30)).sum()
@@ -1469,13 +1470,12 @@ elif active_tab == "Expiry":
                         <div style='font-weight: 700; font-size: 0.95rem;'>{label}</div>
                     </div>
                 """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Expiry timeline
-    st.markdown("#### 📅 Expiry Timeline")
-    
-    if not expired_items.empty and 'days_to_expiry' in expired_items.columns:
+        
+        st.markdown("---")
+        
+        # Expiry timeline
+        st.markdown("#### 📅 Expiry Timeline")
+        
         # Categorize items
         def categorize_expiry(days):
             if days <= 0:
@@ -1509,11 +1509,18 @@ elif active_tab == "Expiry":
         
         truly_expired = expired_items[expired_items['days_to_expiry'] <= 0]
         if not truly_expired.empty:
-            # Get quantity column
-            quantity_col = 'total_units' if 'total_units' in truly_expired.columns else 'quantity'
+            # Use the correct quantity column name
+            quantity_col = 'quantity' if 'quantity' in truly_expired.columns else 'total_units'
+            
+            # Prepare display dataframe
+            display_cols = ['item_name', 'category', quantity_col, 'unit', 'expiry_date', 'days_to_expiry']
+            display_df = truly_expired[display_cols].copy()
+            display_df['expiry_date'] = pd.to_datetime(display_df['expiry_date']).dt.strftime('%Y-%m-%d')
+            display_df['days_to_expiry'] = display_df['days_to_expiry'].abs().astype(int)
+            display_df.columns = ['Item Name', 'Category', 'Quantity', 'Unit', 'Expiry Date', 'Days Expired']
+            
             st.dataframe(
-                truly_expired[['item_name', 'category', quantity_col, 'unit', 
-                              'expiry_date', 'days_to_expiry']],
+                display_df,
                 use_container_width=True,
                 height=300
             )
@@ -1528,43 +1535,185 @@ elif active_tab == "Expiry":
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    action = st.radio("Select Action", ["Discard", "Update Expiry"])
+                    action = st.radio("Select Action", ["Discard", "Update Expiry", "Extend Shelf Life"])
                     
                     if action == "Discard":
                         # Get current quantity
-                        current_qty = item_data.get('total_units') or item_data.get('quantity', 0)
+                        current_qty = item_data.get('quantity') or item_data.get('total_units', 0)
                         qty = st.number_input("Quantity to discard", 
                                             min_value=1, 
                                             max_value=int(current_qty),
                                             value=int(current_qty))
                         reason = st.selectbox("Reason", ["Expired", "Damaged", "Contaminated", "Other"])
+                        disposal_method = st.selectbox("Disposal Method", 
+                                                      ["Incinerate", "Chemical Treatment", "Landfill", "Return to Supplier"])
                         
                         if st.button("🗑️ Discard Item", type="primary"):
-                            st.success(f"{qty} units of {selected_expired} marked for disposal.")
+                            # Log the disposal
+                            notes = f"Discarded {qty} units - Reason: {reason}, Method: {disposal_method}"
+                            
+                            # Update inventory
+                            new_qty = max(int(current_qty) - qty, 0)
+                            updates = {'quantity': new_qty}
+                            
+                            if db.update_inventory_item(item_data['item_id'], updates, user):
+                                st.success(f"{qty} units of {selected_expired} marked for disposal.")
+                                st.info(f"Remaining stock: {new_qty} units")
                     
                     elif action == "Update Expiry":
                         new_expiry = st.date_input("New Expiry Date", 
                                                   value=datetime.now() + timedelta(days=365))
+                        reason = st.text_input("Reason for extension", 
+                                              placeholder="e.g., Testing confirmed stability")
+                        
                         if st.button("📅 Update Expiry", type="primary"):
                             updates = {'expiry_date': new_expiry.strftime('%Y-%m-%d')}
-                            if db.update_inventory_item(item_data['item_id'], updates):
+                            if db.update_inventory_item(item_data['item_id'], updates, user):
                                 st.success("Expiry date updated!")
+                                st.rerun()
+                    
+                    elif action == "Extend Shelf Life":
+                        st.info("""
+                        **Shelf Life Extension Procedure:**
+                        1. Review stability data
+                        2. Perform quality testing
+                        3. Document extension approval
+                        4. Update expiry date
+                        """)
+                        
+                        extension_days = st.number_input("Extension (days)", 
+                                                        min_value=1, 
+                                                        max_value=365, 
+                                                        value=30)
+                        approved_by = st.text_input("Approved By", 
+                                                   placeholder="Quality Manager")
+                        test_results = st.text_area("Test Results Summary")
+                        
+                        if st.button("✅ Approve Extension", type="primary"):
+                            new_expiry = pd.to_datetime(item_data['expiry_date']) + timedelta(days=extension_days)
+                            updates = {'expiry_date': new_expiry.strftime('%Y-%m-%d')}
+                            
+                            if db.update_inventory_item(item_data['item_id'], updates, user):
+                                st.success(f"Shelf life extended by {extension_days} days!")
                                 st.rerun()
                 
                 with col2:
-                    quantity = item_data.get('total_units') or item_data.get('quantity', 0)
+                    quantity = item_data.get('quantity') or item_data.get('total_units', 0)
+                    expiry_date = item_data.get('expiry_date')
+                    
                     st.info(f"""
                     **Item Details:**
                     - **ID:** {item_data['item_id']}
                     - **Category:** {item_data['category']}
                     - **Current Stock:** {quantity} units
                     - **Unit:** {item_data.get('unit', 'Units')}
+                    - **Original Expiry:** {expiry_date}
                     - **Expired Since:** {abs(int(item_data['days_to_expiry']))} days
+                    - **Storage Location:** {item_data.get('storage_location', 'Unknown')}
+                    - **Supplier:** {item_data.get('supplier', 'Unknown')}
                     """)
+                    
+                    # Show if item has been used recently
+                    st.markdown("**📊 Recent Usage:**")
+                    try:
+                        usage_stats = db.get_usage_stats()
+                        if not usage_stats.empty and selected_expired in usage_stats['item_name'].values:
+                            item_usage = usage_stats[usage_stats['item_name'] == selected_expired].iloc[0]
+                            st.write(f"Total Units Used: {item_usage.get('total_units_used', 0):,}")
+                            st.write(f"Usage Count: {item_usage.get('usage_count', 0)}")
+                        else:
+                            st.write("No usage recorded")
+                    except:
+                        st.write("Usage data not available")
         else:
             st.success("✅ No expired items found!")
+        
+        # Items expiring soon
+        st.markdown("#### ⚠️ Items Expiring Soon (≤ 30 days)")
+        
+        expiring_soon = expired_items[(expired_items['days_to_expiry'] > 0) & 
+                                     (expired_items['days_to_expiry'] <= 30)]
+        
+        if not expiring_soon.empty:
+            # Sort by days to expiry
+            expiring_soon = expiring_soon.sort_values('days_to_expiry')
+            
+            # Prepare display
+            display_cols = ['item_name', 'category', 'quantity', 'unit', 'expiry_date', 'days_to_expiry']
+            display_df = expiring_soon[display_cols].copy()
+            display_df['expiry_date'] = pd.to_datetime(display_df['expiry_date']).dt.strftime('%Y-%m-%d')
+            display_df.columns = ['Item Name', 'Category', 'Quantity', 'Unit', 'Expiry Date', 'Days Left']
+            
+            st.dataframe(
+                display_df,
+                use_container_width=True,
+                height=300
+            )
+            
+            # Expiry notifications
+            st.markdown("##### 🔔 Set Expiry Alerts")
+            alert_days = st.slider("Alert Days Before Expiry", 7, 90, 30)
+            recipients = st.text_input("Alert Recipients (comma-separated emails)", 
+                                      value=user.get('email', ''))
+            
+            if st.button("Set Up Alerts", type="secondary"):
+                st.success(f"Alerts will be sent {alert_days} days before expiry to: {recipients}")
+        else:
+            st.info("No items expiring within 30 days.")
+        
+        # Export options
+        st.markdown("##### 📥 Export Expiry Report")
+        
+        col_e1, col_e2 = st.columns(2)
+        
+        with col_e1:
+            if st.button("Export Expired Items", use_container_width=True):
+                csv = truly_expired.to_csv(index=False) if not truly_expired.empty else ""
+                if csv:
+                    st.download_button(
+                        "💾 Download CSV",
+                        data=csv,
+                        file_name=f"expired_items_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv"
+                    )
+        
+        with col_e2:
+            if st.button("Export All Expiry Data", use_container_width=True):
+                csv = expired_items.to_csv(index=False)
+                st.download_button(
+                    "💾 Download CSV",
+                    data=csv,
+                    file_name=f"all_expiry_data_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
+    
     else:
-        st.info("No expiry data available or items don't have expiry dates set.")
+        if expired_items.empty:
+            st.info("No items with expiry dates found in inventory.")
+        else:
+            st.info("Expiry data loaded but 'days_to_expiry' column not found. Check data structure.")
+        
+        # Show how to add expiry dates
+        with st.expander("📝 How to add expiry dates to items"):
+            st.markdown("""
+            **To track item expiry:**
+            
+            1. **Edit existing items:**
+               - Go to **Inventory → Edit Item** tab
+               - Select an item
+               - Set an expiry date or mark as "No expiry"
+            
+            2. **Add new items with expiry:**
+               - Go to **Inventory → Add Item** tab
+               - Check "Has expiry date?" option
+               - Set the expiry date
+            
+            3. **Batch update:**
+               - Use the **Settings → Data Import** feature
+               - Include "Expiry Date" column in your Excel file
+            
+            **Note:** Only items with expiry dates will appear in this tab.
+            """)
 
 # ANALYTICS TAB
 elif active_tab == "Analytics":
@@ -3005,6 +3154,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
