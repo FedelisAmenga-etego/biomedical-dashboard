@@ -453,3 +453,21 @@ class SupabaseDatabase:
                 print("Get usage trends error:", e)
                 return pd.DataFrame()
 
+    # ------------------------------------------------------------------
+    # USAGE HISTORY - INDIVIDUAL ENTRIES
+    # ------------------------------------------------------------------
+    def get_usage_history(self, limit: int = 100):
+        """Get individual usage log entries"""
+        try:
+            response = self.supabase.table("usage_logs") \
+                .select("*") \
+                .order("usage_date", desc=True) \
+                .limit(limit) \
+                .execute()
+            
+            return pd.DataFrame(response.data)
+            
+        except Exception as e:
+            print("Get usage history error:", e)
+            return pd.DataFrame()
+
