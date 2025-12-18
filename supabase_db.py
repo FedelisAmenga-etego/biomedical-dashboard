@@ -137,7 +137,7 @@ class SupabaseDatabase:
             if not item_id or units_used <= 0:
                 return False
     
-            # 1. Insert usage log (NO user_id column)
+            # INSERT INTO usage_logs — MATCHES TABLE EXACTLY
             log_data = {
                 "item_id": item_id,
                 "item_name": usage_data.get("item_name", ""),
@@ -156,7 +156,7 @@ class SupabaseDatabase:
             if not usage_response.data:
                 return False
     
-            # 2. Get current inventory quantity
+            # GET CURRENT INVENTORY
             inv_response = self.supabase.table("inventory") \
                 .select("quantity") \
                 .eq("item_id", item_id) \
@@ -168,13 +168,13 @@ class SupabaseDatabase:
             current_qty = inv_response.data[0].get("quantity", 0)
             new_qty = max(current_qty - units_used, 0)
     
-            # 3. Update inventory
+            # UPDATE INVENTORY
             self.supabase.table("inventory") \
                 .update({"quantity": new_qty}) \
                 .eq("item_id", item_id) \
                 .execute()
     
-            # 4. Audit inventory usage (THIS is where user is recorded)
+            # AUDIT INVENTORY CHANGE (USER IS LOGGED HERE)
             self._log_audit_event(
                 user=user,
                 action_type="INVENTORY_USAGE",
@@ -263,4 +263,5 @@ class SupabaseDatabase:
             return stats
         except Exception:
             return pd.DataFrame()
+
 
