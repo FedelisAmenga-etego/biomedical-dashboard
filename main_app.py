@@ -1106,46 +1106,133 @@ elif active_tab == "Usage":
                             st.error("❌ Failed to log usage.")
                             st.info("Check the terminal/console for error details.")
     
-    with tab2:
-        st.markdown("#### 📊 Usage Statistics")
-        
-        usage_stats = db.get_usage_stats()
-        
-        if not usage_stats.empty:
-            col1, col2 = st.columns(2)
+        with tab2:
+            st.markdown("#### 📊 Usage Statistics & History")
             
-            with col1:
-                st.markdown("##### Top Used Items")
-                top_items = usage_stats.nlargest(10, 'total_units_used')
-                fig = px.bar(
-                    top_items,
-                    x='item_name',
-                    y='total_units_used',
-                    color='total_units_used',
-                    text='total_units_used',
-                    title=""
+            # Get aggregated stats AND individual history
+            usage_stats = db.get_usage_stats()
+            usage_history = db.get_usage_history(limit=100)  # NEW: Get individual entries
+            
+            if not usage_stats.empty:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("##### 📈 Top Used Items")
+                    top_items = usage_stats.nlargest(10, 'total_units_used')
+                    fig = px.bar(
+                        top_items,
+                        x='item_name',
+                        y='total_units_used',
+                        color='total_units_used',
+                        text='total_units_used',
+                        title=""
+                    )
+                    fig.update_traces(texttemplate='%{text:,}', textposition='outside')
+                    fig.update_layout(height=400, plot_bgcolor='white', paper_bgcolor='white')
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    st.markdown("##### 🥧 Usage Distribution")
+                    fig = px.pie(
+                        usage_stats,
+                        values='total_units_used',
+                        names='item_name',
+                        hole=0.4,
+                        title=""
+                    )
+                    fig.update_layout(height=400)
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No usage statistics available yet.")
+            
+            # INDIVIDUAL USAGE HISTORY TABLE - NEW SECTION
+            st.markdown("##### 📝 Individual Usage History")
+            
+            if not usage_history.empty:
+                # Add filters for the history table
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    item_filter = st.selectbox(
+                        "Filter by Item", 
+                        ["All"] + sorted(usage_history['item_name'].unique().tolist())
+                    )
+                
+                with col2:
+                    user_filter = st.selectbox(
+                        "Filter by User", 
+                        ["All"] + sorted(usage_history['used_by'].unique().tolist())
+                    )
+                
+                with col3:
+                    date_range = st.selectbox(
+                        "Time Period", 
+                        ["Last 30 days", "Last 90 days", "All time"]
+                    )
+                
+                # Apply filters
+                filtered_history = usage_history.copy()
+                
+                if item_filter != "All":
+                    filtered_history = filtered_history[filtered_history['item_name'] == item_filter]
+                
+                if user_filter != "All":
+                    filtered_history = filtered_history[filtered_history['used_by'] == user_filter]
+                
+                # Apply date filter
+                if date_range != "All time":
+                    cutoff_date = datetime.now() - timedelta(days=30 if date_range == "Last 30 days" else 90)
+                    filtered_history['usage_date'] = pd.to_datetime(filtered_history['usage_date'])
+                    filtered_history = filtered_history[filtered_history['usage_date'] >= cutoff_date]
+                
+                # Format the display
+                display_cols = ['usage_date', 'item_name', 'units_used', 'purpose', 
+                              'used_by', 'department', 'notes']
+                
+                display_df = filtered_history[display_cols].copy()
+                display_df['usage_date'] = pd.to_datetime(display_df['usage_date']).dt.strftime('%Y-%m-%d %H:%M')
+                display_df.columns = ['Date & Time', 'Item Name', 'Units Used', 'Purpose', 
+                                    'Used By', 'Department', 'Notes']
+                
+                # Show summary
+                total_units = display_df['Units Used'].sum()
+                unique_items = display_df['Item Name'].nunique()
+                
+                st.metric("Total Entries", len(display_df))
+                st.metric("Total Units Used", f"{total_units:,}")
+                st.metric("Unique Items", unique_items)
+                
+                # Display the table
+                st.dataframe(
+                    display_df,
+                    use_container_width=True,
+                    height=400,
+                    column_config={
+                        'Date & Time': st.column_config.TextColumn("Time", width="medium"),
+                        'Item Name': st.column_config.TextColumn("Item", width="medium"),
+                        'Units Used': st.column_config.NumberColumn("Units", width="small"),
+                        'Purpose': st.column_config.TextColumn("Purpose", width="medium"),
+                        'Used By': st.column_config.TextColumn("User", width="small"),
+                        'Department': st.column_config.TextColumn("Dept", width="small"),
+                        'Notes': st.column_config.TextColumn("Notes", width="large")
+                    }
                 )
-                fig.update_traces(texttemplate='%{text:,}', textposition='outside')
-                fig.update_layout(height=400, plot_bgcolor='white', paper_bgcolor='white')
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                st.markdown("##### Usage Distribution")
-                fig = px.pie(
-                    usage_stats,
-                    values='total_units_used',
-                    names='item_name',
-                    hole=0.4,
-                    title=""
+                
+                # Export option
+                csv = filtered_history.to_csv(index=False)
+                st.download_button(
+                    "📥 Export Usage History",
+                    data=csv,
+                    file_name=f"usage_history_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
                 )
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No individual usage history available yet. Log some usage to see it here!")
             
-            # Detailed table
-            st.markdown("##### Detailed Usage History")
-            st.dataframe(usage_stats, use_container_width=True, height=300)
-        else:
-            st.info("No usage data available yet.")
+            # Keep the aggregated stats table too
+            if not usage_stats.empty:
+                st.markdown("##### 📊 Aggregated Usage Statistics")
+                st.dataframe(usage_stats, use_container_width=True, height=300)
     
     with tab3:  # NEW: Trend Analysis Tab
         st.markdown("#### 📈 Usage Trend Analysis")
@@ -2918,6 +3005,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
