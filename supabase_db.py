@@ -246,19 +246,38 @@ class SupabaseDatabase:
     # ------------------------------------------------------------------
     # REPORTING
     # ------------------------------------------------------------------
-    def get_audit_logs(self, limit: int = 200):
+    def get_audit_logs(
+    self,
+    start_date: str = None,
+    end_date: str = None,
+    user_id: str = None,
+    action_type: str = None,
+    table_name: str = None,
+    limit: int = 200
+):
         try:
-            response = self.supabase.table("audit_logs") \
-                .select("*") \
-                .order("timestamp", desc=True) \
-                .limit(limit) \
-                .execute()
-
+            query = self.supabase.table("audit_logs").select("*")
+    
+            if start_date:
+                query = query.gte("timestamp", start_date)
+            if end_date:
+                query = query.lte("timestamp", end_date)
+            if user_id:
+                query = query.eq("user_id", user_id)
+            if action_type:
+                query = query.eq("action_type", action_type)
+            if table_name:
+                query = query.eq("table_name", table_name)
+    
+            response = query.order("timestamp", desc=True).limit(limit).execute()
+    
             return pd.DataFrame(response.data)
-
+    
         except Exception as e:
             print("Get audit logs error:", e)
+            print(traceback.format_exc())
             return pd.DataFrame()
+
 
     def get_usage_stats(self):
         try:
@@ -279,3 +298,4 @@ class SupabaseDatabase:
 
         except Exception:
             return pd.DataFrame()
+
