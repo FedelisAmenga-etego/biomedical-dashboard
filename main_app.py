@@ -2485,8 +2485,15 @@ elif active_tab == "AuditTrails":
 elif active_tab == "Settings":
     st.markdown('<div class="section-header"><h2>⚙️ System Settings</h2></div>', unsafe_allow_html=True)
     users_df = db.get_all_users()
+    # Check if we got a valid DataFrame
+    if users_df is None:
+        users_df = pd.DataFrame()
+    elif not isinstance(users_df, pd.DataFrame):
+        st.error("Error loading users data")
+        users_df = pd.DataFrame()
+        
     # Check if user has permission
-    if not auth.is_admin():
+    if user.get('role') != 'admin':
         st.error("⛔ Administrator access required for user management.")
         
         # Show limited settings for non-admins
@@ -2556,37 +2563,61 @@ elif active_tab == "Settings":
             
             if not users_df.empty:
                 # Format the dataframe for better display
-                available_cols = users_df.columns.tolist()
-                display_cols = ['username', 'full_name', 'department']
-                if 'role_display' in available_cols:
-                    display_cols.append('role_display')
-                elif 'role' in available_cols:
+                display_cols = []
+                if 'username' in users_df.columns:
+                    display_cols.append('username')
+                if 'full_name' in users_df.columns:
+                    display_cols.append('full_name')
+                if 'role' in users_df.columns:
                     display_cols.append('role')
-                if 'created_at' in available_cols:
+                if 'department' in users_df.columns:
+                    display_cols.append('department')
+                if 'created_at' in users_df.columns:
                     display_cols.append('created_at')
-                display_df = users_df[display_cols].copy()
-                display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
-                display_df.columns = ['Username', 'Full Name', 'Role', 'Department', 'Created At']
                 
-                st.dataframe(
-                    display_df,
-                    use_container_width=True,
-                    height=400
-                )
-                
-                # User statistics
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Users", len(users_df))
-                with col2:
-                    admin_count = (users_df['role'] == 'admin').sum()
-                    st.metric("Administrators", admin_count)
-                with col3:
-                    manager_count = (users_df['role'] == 'manager').sum()
-                    st.metric("Managers", manager_count)
-                with col4:
-                    user_count = (users_df['role'] == 'user').sum()
-                    st.metric("Regular Users", user_count)
+                if display_cols:
+                    display_df = users_df[display_cols].copy()
+                    
+                    # Format datetime if exists
+                    if 'created_at' in display_df.columns:
+                        try:
+                            display_df['created_at'] = pd.to_datetime(display_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+                        except:
+                            pass
+                    
+                    # Rename columns for display
+                    column_names = {
+                        'username': 'Username',
+                        'full_name': 'Full Name', 
+                        'role': 'Role',
+                        'department': 'Department',
+                        'created_at': 'Created At'
+                    }
+                    display_df = display_df.rename(columns=column_names)
+                    
+                    st.dataframe(
+                        display_df,
+                        use_container_width=True,
+                        height=400
+                    )
+                    
+                    # User statistics
+                    if 'role' in users_df.columns:
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            st.metric("Total Users", len(users_df))
+                        with col2:
+                            admin_count = (users_df['role'] == 'admin').sum()
+                            st.metric("Administrators", admin_count)
+                        with col3:
+                            manager_count = (users_df['role'] == 'manager').sum()
+                            st.metric("Managers", manager_count)
+                        with col4:
+                            user_count = (users_df['role'] == 'user').sum()
+                            st.metric("Regular Users", user_count)
+                else:
+                    st.info("No user data columns found.")
             else:
                 st.info("No users found in the system.")
         
@@ -3154,6 +3185,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
