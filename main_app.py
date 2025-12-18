@@ -9,13 +9,15 @@ from auth_simple import SimpleAuth
 from supabase_db import SupabaseDatabase
 from data_processor import DataProcessor
 from dotenv import load_dotenv
+from PIL import Image
 import io
 import os
 import base64
 
+new_logo = Image.open("logo.png")
 st.set_page_config(
     page_title="NHRC Biomedical Dashboard",
-    page_icon="🏥",
+    page_icon=new_logo,
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -2914,6 +2916,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
