@@ -473,3 +473,61 @@ class SupabaseDatabase:
             return pd.DataFrame()
 
 
+        # ------------------------------------------------------------------
+    # EXPIRY MANAGEMENT
+    # ------------------------------------------------------------------
+    def get_expired_items(self):
+        """Get items with expiry dates and calculate days to expiry"""
+        try:
+            # Get all items with expiry dates
+            response = self.supabase.table("inventory") \
+                .select("*") \
+                .not_.is_("expiry_date", "null") \
+                .execute()
+            
+            df = pd.DataFrame(response.data)
+            
+            if df.empty:
+                return df
+            
+            # Calculate days to expiry
+            current_date = pd.Timestamp.now()
+            df['expiry_date_dt'] = pd.to_datetime(df['expiry_date'], errors='coerce')
+            df['days_to_expiry'] = (df['expiry_date_dt'] - current_date).dt.days
+            
+            return df
+            
+        except Exception as e:
+            print("Get expired items error:", e)
+            return pd.DataFrame()
+
+        def get_items_expiring_soon(self, days_threshold: int = 30):
+            """Get items expiring within the specified number of days"""
+            try:
+                # Get all items with expiry dates
+                response = self.supabase.table("inventory") \
+                    .select("*") \
+                    .not_.is_("expiry_date", "null") \
+                    .execute()
+                
+                df = pd.DataFrame(response.data)
+                
+                if df.empty:
+                    return df
+                
+                # Calculate days to expiry
+                current_date = pd.Timestamp.now()
+                df['expiry_date_dt'] = pd.to_datetime(df['expiry_date'], errors='coerce')
+                df['days_to_expiry'] = (df['expiry_date_dt'] - current_date).dt.days
+                
+                # Filter items expiring within the threshold
+                expiring_soon = df[(df['days_to_expiry'] > 0) & (df['days_to_expiry'] <= days_threshold)]
+                
+                return expiring_soon
+                
+            except Exception as e:
+                print("Get items expiring soon error:", e)
+                return pd.DataFrame()
+
+
+
