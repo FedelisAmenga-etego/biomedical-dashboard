@@ -2733,36 +2733,36 @@ elif active_tab == "Settings":
                             submitted = st.form_submit_button("💾 Save Changes", type="primary")
                             
                         if submitted:
-                        updates = {
-                            'full_name': new_fullname,
-                            'role': new_role,
-                            'department': new_department
-                        }
-                        
-                            # Handle password reset
-                            if reset_password and new_password:
-                                if not new_password:
-                                    st.error("New password is required when resetting password!")
-                                elif new_password != confirm_password:
-                                    st.error("Passwords do not match!")
-                                elif len(new_password) < 6:
-                                    st.error("Password must be at least 6 characters long!")
-                                else:
-                                    updates['password'] = new_password
+                            updates = {
+                                'full_name': new_fullname,
+                                'role': new_role,
+                                'department': new_department
+                            }
                             
-                            # Get client info for audit
-                            ip_address, user_agent = get_client_info()
-                            
-                            # Use the correct method
-                            success, message = db.update_user(user_to_edit, updates, user, ip_address, user_agent)
-                            
-                            if success:
-                                st.success(f"✅ User '{user_to_edit}' updated successfully!")
+                                # Handle password reset
                                 if reset_password and new_password:
-                                    st.info(f"New password for {user_to_edit}: `{new_password}`")
-                                st.rerun()
-                            else:
-                                st.error(f"❌ {message}")
+                                    if not new_password:
+                                        st.error("New password is required when resetting password!")
+                                    elif new_password != confirm_password:
+                                        st.error("Passwords do not match!")
+                                    elif len(new_password) < 6:
+                                        st.error("Password must be at least 6 characters long!")
+                                    else:
+                                        updates['password'] = new_password
+                                
+                                # Get client info for audit
+                                ip_address, user_agent = get_client_info()
+                                
+                                # Use the correct method
+                                success, message = db.update_user(user_to_edit, updates, user, ip_address, user_agent)
+                                
+                                if success:
+                                    st.success(f"✅ User '{user_to_edit}' updated successfully!")
+                                    if reset_password and new_password:
+                                        st.info(f"New password for {user_to_edit}: `{new_password}`")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {message}")
                     else:
                         st.info("No other users to edit.")
                 else:
@@ -3175,6 +3175,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
