@@ -1666,11 +1666,12 @@ elif active_tab == "AuditTrails":
             days_back = st.selectbox("Time Period", 
                                    ["Last 7 days", "Last 30 days", "Last 90 days", "All time"],
                                    index=0)
-        
+    
         with col2:
             action_filter = st.selectbox("Action Type", 
                                        ["All", "CREATE", "UPDATE", "DELETE", "USAGE", 
-                                        "USER_CREATE", "USER_UPDATE", "USER_DELETE", "LOGIN", "LOGOUT"])
+                                        "INVENTORY_USAGE", "USER_CREATE", "USER_UPDATE", 
+                                        "USER_DELETE", "LOGIN", "LOGOUT"])
         
         with col3:
             table_filter = st.selectbox("Table", 
@@ -1717,6 +1718,7 @@ elif active_tab == "AuditTrails":
             display_df['timestamp'] = pd.to_datetime(display_df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
             
             # Color code action types
+                        # Color code action types
             def color_action(action):
                 if action in ['CREATE', 'USER_CREATE']:
                     return '🟢'
@@ -1724,8 +1726,8 @@ elif active_tab == "AuditTrails":
                     return '🔵'
                 elif action in ['DELETE', 'USER_DELETE']:
                     return '🔴'
-                elif action == 'USAGE':
-                    return '🟡'
+                elif action in ['USAGE', 'INVENTORY_USAGE']:
+                    return '🟡'  # Yellow for usage
                 else:
                     return '⚪'
             
@@ -2916,6 +2918,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
