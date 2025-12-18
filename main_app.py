@@ -2740,15 +2740,15 @@ elif active_tab == "Settings":
                             }
                             
                                 # Handle password reset
-                                if reset_password and new_password:
-                                    if not new_password:
-                                        st.error("New password is required when resetting password!")
-                                    elif new_password != confirm_password:
-                                        st.error("Passwords do not match!")
-                                    elif len(new_password) < 6:
-                                        st.error("Password must be at least 6 characters long!")
-                                    else:
-                                        updates['password'] = new_password
+                            if reset_password and new_password:
+                                if not new_password:
+                                    st.error("New password is required when resetting password!")
+                                elif new_password != confirm_password:
+                                    st.error("Passwords do not match!")
+                                elif len(new_password) < 6:
+                                    st.error("Password must be at least 6 characters long!")
+                                else:
+                                    updates['password'] = new_password
                                 
                                 # Get client info for audit
                                 ip_address, user_agent = get_client_info()
@@ -3175,6 +3175,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
