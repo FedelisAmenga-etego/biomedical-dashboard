@@ -2484,16 +2484,11 @@ elif active_tab == "AuditTrails":
 # SETTINGS TAB
 elif active_tab == "Settings":
     st.markdown('<div class="section-header"><h2>⚙️ System Settings</h2></div>', unsafe_allow_html=True)
+    # Get users data
     users_df = db.get_all_users()
-    # Check if we got a valid DataFrame
-    if users_df is None:
-        users_df = pd.DataFrame()
-    elif not isinstance(users_df, pd.DataFrame):
-        st.error("Error loading users data")
-        users_df = pd.DataFrame()
-        
-    # Check if user has permission
-    if user.get('role') != 'admin':
+    
+    # Check if user has permission - USE THE EXISTING auth.is_admin() method
+    if not auth.is_admin():
         st.error("⛔ Administrator access required for user management.")
         
         # Show limited settings for non-admins
@@ -2553,7 +2548,6 @@ elif active_tab == "Settings":
         st.markdown("#### 👥 User Management")
         
         # Get all users
-        
         
         # Tabs for different user management tasks
         user_tab1, user_tab2, user_tab3, user_tab4 = st.tabs(["View Users", "Add User", "Edit User", "Delete User"])
@@ -2676,13 +2670,10 @@ elif active_tab == "Settings":
                         if new_email:
                             user_data['email'] = new_email.strip()
                         
-                        # Create user
-                        success, message = db.create_user(user_data)
-                        
                         # Get client info for audit
                         ip_address, user_agent = get_client_info()
                         
-                        # Create user with audit
+                        # Create user with audit - USE THE CORRECT METHOD
                         success, message = db.create_user(user_data, user, ip_address, user_agent)
                         
                         if success:
@@ -2741,42 +2732,41 @@ elif active_tab == "Settings":
                             
                             submitted = st.form_submit_button("💾 Save Changes", type="primary")
                             
-                            if submitted:
-                                updates = {
-                                    'full_name': new_fullname,
-                                    'role': new_role,
-                                    'department': new_department
-                                }
-                                
-                                # Handle password reset
-                                if reset_password and new_password:
-                                    if not new_password:
-                                        st.error("New password is required when resetting password!")
-                                    elif new_password != confirm_password:
-                                        st.error("Passwords do not match!")
-                                    elif len(new_password) < 6:
-                                        st.error("Password must be at least 6 characters long!")
-                                    else:
-                                        updates['password'] = new_password
-                                
-                                success, message = db.update_user(user_to_edit, updates)
-
-                                # Get client info for audit
-                                ip_address, user_agent = get_client_info()
-                                
-                                success, message = db.update_user(user_to_edit, updates, user, ip_address, user_agent)
-                                
-                                if success:
-                                    st.success(f"✅ User '{user_to_edit}' updated successfully!")
-                                    if reset_password and new_password:
-                                        st.info(f"New password for {user_to_edit}: `{new_password}`")
-                                    st.rerun()
+                        if submitted:
+                        updates = {
+                            'full_name': new_fullname,
+                            'role': new_role,
+                            'department': new_department
+                        }
+                        
+                            # Handle password reset
+                            if reset_password and new_password:
+                                if not new_password:
+                                    st.error("New password is required when resetting password!")
+                                elif new_password != confirm_password:
+                                    st.error("Passwords do not match!")
+                                elif len(new_password) < 6:
+                                    st.error("Password must be at least 6 characters long!")
                                 else:
-                                    st.error(f"❌ {message}")
+                                    updates['password'] = new_password
+                            
+                            # Get client info for audit
+                            ip_address, user_agent = get_client_info()
+                            
+                            # Use the correct method
+                            success, message = db.update_user(user_to_edit, updates, user, ip_address, user_agent)
+                            
+                            if success:
+                                st.success(f"✅ User '{user_to_edit}' updated successfully!")
+                                if reset_password and new_password:
+                                    st.info(f"New password for {user_to_edit}: `{new_password}`")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {message}")
+                    else:
+                        st.info("No other users to edit.")
                 else:
-                    st.info("No other users to edit.")
-            else:
-                st.info("No users found in the system.")
+                    st.info("No users found in the system.")
         
         with user_tab4:
             st.markdown("##### 🗑️ Delete User")
@@ -2818,10 +2808,10 @@ elif active_tab == "Settings":
                                        disabled=not confirm,
                                        type="primary",
                                        use_container_width=True):
-                                success, message = db.delete_user(user_to_delete)
-                                                                # Get client info for audit
+                                # Get client info for audit
                                 ip_address, user_agent = get_client_info()
                                 
+                                # Use the correct method
                                 success, message = db.delete_user(user_to_delete, user, ip_address, user_agent)
                                 
                                 if success:
@@ -3185,6 +3175,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
