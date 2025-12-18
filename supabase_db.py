@@ -438,6 +438,7 @@ class SupabaseDatabase:
             print("Get expired items error:", e)
             return pd.DataFrame()
 
+
         def get_usage_trends(self):
             """Get detailed usage data for trend analysis"""
             try:
@@ -470,4 +471,5 @@ class SupabaseDatabase:
         except Exception as e:
             print("Get usage history error:", e)
             return pd.DataFrame()
+
 
