@@ -178,12 +178,28 @@ class SupabaseDatabase:
             new_qty = max(old_qty - units_used, 0)
 
             # 3. Update inventory
-            self.supabase.table("inventory") \
+            update_response = self.supabase.table("inventory") \
                 .update({"quantity": new_qty}) \
                 .eq("item_id", item_id) \
                 .execute()
 
-            # 4. Audit inventory change
+            # 4. Audit BOTH events: usage logging AND inventory update
+            
+            # Audit the usage log creation
+            self._log_audit_event(
+                user=user,
+                action_type="USAGE",
+                table_name="usage_logs",
+                record_id=usage_response.data[0].get('id') if usage_response.data else None,
+                field_name="units_used",
+                old_value=None,
+                new_value=units_used,
+                notes=f"Used {units_used} units of {usage_data.get('item_name', item_id)}",
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            
+            # Audit the inventory change
             self._log_audit_event(
                 user=user,
                 action_type="INVENTORY_USAGE",
@@ -192,7 +208,7 @@ class SupabaseDatabase:
                 field_name="quantity",
                 old_value=old_qty,
                 new_value=new_qty,
-                notes=f"Used {units_used} units",
+                notes=f"Used {units_used} units - {usage_data.get('purpose', '')}",
                 ip_address=ip_address,
                 user_agent=user_agent
             )
@@ -297,5 +313,128 @@ class SupabaseDatabase:
             )
 
         except Exception:
+            return pd.DataFrame()
+
+    def get_all_users(self):
+        try:
+            response = self.supabase.table("users").select("*").execute()
+            return pd.DataFrame(response.data)
+        except Exception:
+            return pd.DataFrame()
+
+    def create_user(self, user_data: Dict, current_user: Dict = None, 
+                    ip_address: str = None, user_agent: str = None):
+        try:
+            # Hash password
+            password = user_data.pop('password', '')
+            if password:
+                salt = bcrypt.gensalt()
+                user_data['password_hash'] = bcrypt.hashpw(password.encode(), salt).decode()
+            
+            # Set default role if not provided
+            if 'role' not in user_data:
+                user_data['role'] = 'user'
+            
+            # Add creation timestamp
+            user_data['created_at'] = datetime.now().isoformat()
+            
+            response = self.supabase.table("users").insert(user_data).execute()
+            
+            if response.data:
+                # Audit the creation
+                self._log_audit_event(
+                    user=current_user,
+                    action_type="USER_CREATE",
+                    table_name="users",
+                    record_id=user_data.get('username'),
+                    notes=f"Created user {user_data.get('username')}",
+                    ip_address=ip_address,
+                    user_agent=user_agent
+                )
+                return True, "User created successfully"
+            return False, "Failed to create user"
+        except Exception as e:
+            return False, str(e)
+
+    def update_user(self, username: str, updates: Dict, current_user: Dict = None,
+                   ip_address: str = None, user_agent: str = None):
+        try:
+            # If password is being updated, hash it
+            if 'password' in updates:
+                password = updates.pop('password')
+                salt = bcrypt.gensalt()
+                updates['password_hash'] = bcrypt.hashpw(password.encode(), salt).decode()
+                updates['last_password_change'] = datetime.now().isoformat()
+            
+            response = self.supabase.table("users") \
+                .update(updates) \
+                .eq("username", username) \
+                .execute()
+            
+            if response.data:
+                # Audit the update
+                self._log_audit_event(
+                    user=current_user,
+                    action_type="USER_UPDATE",
+                    table_name="users",
+                    record_id=username,
+                    notes=f"Updated user {username}",
+                    ip_address=ip_address,
+                    user_agent=user_agent
+                )
+                return True, "User updated successfully"
+            return False, "Failed to update user"
+        except Exception as e:
+            return False, str(e)
+
+    def delete_user(self, username: str, current_user: Dict = None,
+                   ip_address: str = None, user_agent: str = None):
+        try:
+            response = self.supabase.table("users") \
+                .delete() \
+                .eq("username", username) \
+                .execute()
+            
+            if response.data:
+                # Audit the deletion
+                self._log_audit_event(
+                    user=current_user,
+                    action_type="USER_DELETE",
+                    table_name="users",
+                    record_id=username,
+                    notes=f"Deleted user {username}",
+                    ip_address=ip_address,
+                    user_agent=user_agent
+                )
+                return True, "User deleted successfully"
+            return False, "Failed to delete user"
+        except Exception as e:
+            return False, str(e)
+
+    # ------------------------------------------------------------------
+    # EXPIRY MANAGEMENT
+    # ------------------------------------------------------------------
+    def get_expired_items(self):
+        try:
+            # Get all items with expiry dates
+            response = self.supabase.table("inventory") \
+                .select("*") \
+                .not_.is_("expiry_date", "null") \
+                .execute()
+            
+            df = pd.DataFrame(response.data)
+            
+            if df.empty:
+                return df
+            
+            # Calculate days to expiry
+            current_date = pd.Timestamp.now()
+            df['expiry_date_dt'] = pd.to_datetime(df['expiry_date'], errors='coerce')
+            df['days_to_expiry'] = (df['expiry_date_dt'] - current_date).dt.days
+            
+            return df
+            
+        except Exception as e:
+            print("Get expired items error:", e)
             return pd.DataFrame()
 
