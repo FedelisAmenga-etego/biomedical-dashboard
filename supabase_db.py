@@ -243,7 +243,7 @@ class SupabaseDatabase:
                 "user_name": user.get("full_name") if user else "System",
                 "action_type": action_type,
                 "table_name": table_name,
-                "record_id": record_id,
+                "record_id": str(record_id) if record_id else None,
                 "field_name": field_name,
                 "old_value": str(old_value) if old_value is not None else None,
                 "new_value": str(new_value) if new_value is not None else None,
@@ -251,14 +251,27 @@ class SupabaseDatabase:
                 "ip_address": ip_address,
                 "user_agent": user_agent
             }
-
-            self.supabase.table("audit_logs").insert(audit_data).execute()
+            
+            # Insert into audit logs
+            response = self.supabase.table("audit_logs").insert(audit_data).execute()
+            
+            # Also log the audit creation itself (meta-audit)
+            if response.data:
+                meta_audit = audit_data.copy()
+                meta_audit['action_type'] = 'AUDIT_CREATE'
+                meta_audit['table_name'] = 'audit_logs'
+                meta_audit['record_id'] = response.data[0].get('id')
+                meta_audit['notes'] = 'Audit log entry created'
+                
+                self.supabase.table("audit_logs").insert(meta_audit).execute()
+            
             return True
 
         except Exception as e:
             print("Audit log error:", e)
+            import traceback
+            traceback.print_exc()
             return False
-
     # ------------------------------------------------------------------
     # REPORTING
     # ------------------------------------------------------------------
@@ -684,4 +697,5 @@ class SupabaseDatabase:
         except Exception as e:
             print("Get user by username error:", e)
             return None
+
 
