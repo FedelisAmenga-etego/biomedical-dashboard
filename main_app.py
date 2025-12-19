@@ -1888,12 +1888,17 @@ elif active_tab == "Analytics":
 
 # AUDIT TRAILS TAB
 elif active_tab == "AuditTrails":
+    # ADMIN ONLY ACCESS
+    if not auth.is_admin():
+        st.error("⛔ Administrator access required for audit trails.")
+        st.info("Only administrators can view audit trails for security reasons.")
+        st.stop()
     st.markdown('<div class="section-header"><h2>📋 Audit Trails</h2></div>', unsafe_allow_html=True)
     
     tab1, tab2, tab3, tab4 = st.tabs(["Audit Logs", "Change History", "Statistics", "Export"])
     
-    with tab1:
-        st.markdown("#### 📝 Recent Audit Events")
+        with tab1:
+        st.markdown("#### 📝 Audit Logs - Complete History")
         
         # Filters
         col1, col2, col3, col4 = st.columns(4)
@@ -1902,41 +1907,38 @@ elif active_tab == "AuditTrails":
             days_back = st.selectbox("Time Period", 
                                    ["Last 7 days", "Last 30 days", "Last 90 days", "All time"],
                                    index=0)
-    
+        
         with col2:
             action_filter = st.selectbox("Action Type", 
                                        ["All", "CREATE", "UPDATE", "DELETE", "USAGE", 
                                         "INVENTORY_USAGE", "USER_CREATE", "USER_UPDATE", 
-                                        "USER_DELETE", "LOGIN", "LOGOUT"])
+                                        "USER_DELETE", "LOGIN", "LOGOUT", "ADD", 
+                                        "EXPIRY_UPDATE", "ITEM_EDIT"])
         
         with col3:
             table_filter = st.selectbox("Table", 
-                                      ["All", "inventory", "users", "usage_logs"])
+                                      ["All", "inventory", "users", "usage_logs", "audit_logs"])
         
         with col4:
-            # Get audit logs from Supabase
-            audit_logs_df = db.get_audit_logs(limit=1000)
-            if not audit_logs_df.empty:
-                users_with_actions = audit_logs_df[['user_id', 'user_name']].drop_duplicates()
+            # Calculate date range
+            end_date = datetime.now()
+            if days_back == "Last 7 days":
+                start_date = end_date - timedelta(days=7)
+            elif days_back == "Last 30 days":
+                start_date = end_date - timedelta(days=30)
+            elif days_back == "Last 90 days":
+                start_date = end_date - timedelta(days=90)
             else:
-                users_with_actions = pd.DataFrame(columns=['user_id', 'user_name'])
+                start_date = None
             
-            user_options = ["All"]
-            if not users_with_actions.empty:
-                user_options.extend(users_with_actions['user_id'].tolist())
+            # Get unique users from audit logs
+            audit_logs_all = db.get_audit_logs(limit=1000)
+            if not audit_logs_all.empty and 'user_id' in audit_logs_all.columns:
+                unique_users = audit_logs_all['user_id'].dropna().unique().tolist()
+            else:
+                unique_users = []
             
-            user_filter = st.selectbox("User", user_options)
-        
-        # Calculate date range
-        end_date = datetime.now()
-        if days_back == "Last 7 days":
-            start_date = end_date - timedelta(days=7)
-        elif days_back == "Last 30 days":
-            start_date = end_date - timedelta(days=30)
-        elif days_back == "Last 90 days":
-            start_date = end_date - timedelta(days=90)
-        else:
-            start_date = None
+            user_filter = st.selectbox("User", ["All"] + sorted(unique_users))
         
         # Get filtered audit logs
         audit_logs = db.get_audit_logs(
@@ -1945,25 +1947,30 @@ elif active_tab == "AuditTrails":
             user_id=user_filter if user_filter != "All" else None,
             action_type=action_filter if action_filter != "All" else None,
             table_name=table_filter if table_filter != "All" else None,
-            limit=100
+            limit=500  # Increased limit for better visibility
         )
         
         if not audit_logs.empty:
             # Format the display
             display_df = audit_logs.copy()
+            
+            # Convert timestamp
             display_df['timestamp'] = pd.to_datetime(display_df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
             
             # Color code action types
-                        # Color code action types
             def color_action(action):
-                if action in ['CREATE', 'USER_CREATE']:
+                if action in ['CREATE', 'USER_CREATE', 'ADD']:
                     return '🟢'
-                elif action in ['UPDATE', 'USER_UPDATE']:
+                elif action in ['UPDATE', 'USER_UPDATE', 'EXPIRY_UPDATE', 'ITEM_EDIT']:
                     return '🔵'
                 elif action in ['DELETE', 'USER_DELETE']:
                     return '🔴'
                 elif action in ['USAGE', 'INVENTORY_USAGE']:
-                    return '🟡'  # Yellow for usage
+                    return '🟡'
+                elif action == 'LOGIN':
+                    return '🟣'
+                elif action == 'LOGOUT':
+                    return '⚫'
                 else:
                     return '⚪'
             
@@ -1971,81 +1978,80 @@ elif active_tab == "AuditTrails":
             display_df['action_display'] = display_df['action_icon'] + ' ' + display_df['action_type']
             
             # Show summary
-            st.metric("Total Audit Events", len(display_df))
+            total_events = len(display_df)
+            unique_users_count = display_df['user_id'].nunique()
             
-            # Display table
+            col_sum1, col_sum2, col_sum3 = st.columns(3)
+            with col_sum1:
+                st.metric("Total Events", total_events)
+            with col_sum2:
+                st.metric("Unique Users", unique_users_count)
+            with col_sum3:
+                if start_date:
+                    st.metric("Time Period", days_back)
+            
+            # Display the table with ALL data
+            st.markdown("##### 📊 Complete Audit Log Table")
+            
+            # Prepare columns for display
             columns_to_show = ['timestamp', 'user_name', 'action_display', 'table_name', 
                               'record_id', 'field_name', 'old_value', 'new_value', 'notes']
             
+            # Filter out columns that might not exist
+            available_columns = [col for col in columns_to_show if col in display_df.columns]
+            
+            # Create a nicely formatted display
+            formatted_df = display_df[available_columns].copy()
+            formatted_df.columns = ['Timestamp', 'User', 'Action', 'Table', 
+                                   'Record ID', 'Field', 'Old Value', 'New Value', 'Notes']
+            
+            # Display as an interactive table
             st.dataframe(
-                display_df[columns_to_show],
+                formatted_df,
                 use_container_width=True,
-                height=400,
+                height=600,
                 column_config={
-                    'timestamp': st.column_config.TextColumn("Timestamp", width="medium"),
-                    'user_name': st.column_config.TextColumn("User", width="small"),
-                    'action_display': st.column_config.TextColumn("Action", width="small"),
-                    'table_name': st.column_config.TextColumn("Table", width="small"),
-                    'record_id': st.column_config.TextColumn("Record ID", width="medium"),
-                    'field_name': st.column_config.TextColumn("Field", width="small"),
-                    'old_value': st.column_config.TextColumn("Old Value", width="medium"),
-                    'new_value': st.column_config.TextColumn("New Value", width="medium"),
-                    'notes': st.column_config.TextColumn("Notes", width="large")
+                    'Timestamp': st.column_config.TextColumn("Time", width="medium"),
+                    'User': st.column_config.TextColumn("User", width="small"),
+                    'Action': st.column_config.TextColumn("Action", width="small"),
+                    'Table': st.column_config.TextColumn("Table", width="small"),
+                    'Record ID': st.column_config.TextColumn("Record ID", width="medium"),
+                    'Field': st.column_config.TextColumn("Field", width="small"),
+                    'Old Value': st.column_config.TextColumn("Old Value", width="medium"),
+                    'New Value': st.column_config.TextColumn("New Value", width="medium"),
+                    'Notes': st.column_config.TextColumn("Notes", width="large")
                 }
             )
             
-            # Detailed view for selected row
-            st.markdown("#### 🔍 Detailed View")
-            if len(display_df) > 0:
-                # Create selection options
-                selection_options = []
-                for idx, row in display_df.iterrows():
-                    option_text = f"{row['timestamp']} - {row['user_name']} - {row['action_type']}"
-                    if pd.notna(row['record_id']):
-                        option_text += f" - {row['record_id']}"
-                    selection_options.append((idx, option_text))
+            # Export option
+            st.markdown("##### 📥 Export Audit Logs")
+            csv = display_df.to_csv(index=False)
+            st.download_button(
+                "💾 Download Full Audit Log (CSV)",
+                data=csv,
+                file_name=f"audit_logs_complete_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+            # Search functionality
+            st.markdown("##### 🔍 Search in Audit Logs")
+            search_term = st.text_input("Search across all fields:", placeholder="Enter search term...")
+            
+            if search_term:
+                # Search across all string columns
+                mask = display_df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)
+                search_results = display_df[mask]
                 
-                selected_option = st.selectbox(
-                    "Select event to view details",
-                    range(len(selection_options)),
-                    format_func=lambda x: selection_options[x][1]
-                )
-                
-                if selected_option is not None:
-                    selected_event = display_df.iloc[selected_option]
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown("##### Event Details")
-                        st.info(f"""
-                        **Timestamp:** {selected_event['timestamp']}
-                        **User:** {selected_event['user_name']} ({selected_event['user_id']})
-                        **Action:** {selected_event['action_type']}
-                        **Table:** {selected_event['table_name']}
-                        **Record ID:** {selected_event['record_id']}
-                        **Field:** {selected_event['field_name'] or 'N/A'}
-                        """)
-                    
-                    with col2:
-                        st.markdown("##### Change Details")
-                        
-                        if pd.notna(selected_event['old_value']) and pd.notna(selected_event['new_value']):
-                            st.warning(f"**From:** {selected_event['old_value']}")
-                            st.success(f"**To:** {selected_event['new_value']}")
-                        elif pd.notna(selected_event['old_value']):
-                            st.warning(f"**Removed:** {selected_event['old_value']}")
-                        elif pd.notna(selected_event['new_value']):
-                            st.success(f"**Added:** {selected_event['new_value']}")
-                        
-                        if pd.notna(selected_event['notes']):
-                            st.markdown(f"**Notes:** {selected_event['notes']}")
-                        
-                        if pd.notna(selected_event['ip_address']):
-                            st.markdown(f"**IP Address:** `{selected_event['ip_address']}`")
-        
+                if not search_results.empty:
+                    st.success(f"Found {len(search_results)} matching records")
+                    st.dataframe(search_results[available_columns], use_container_width=True, height=300)
+                else:
+                    st.info("No matching records found")
+            
         else:
             st.info("No audit events found for the selected filters.")
+            st.info("Try: 1) Select 'All time' for Time Period, 2) Select 'All' for filters")
     
     with tab2:
         st.markdown("#### 📊 Change History")
@@ -3175,6 +3181,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
