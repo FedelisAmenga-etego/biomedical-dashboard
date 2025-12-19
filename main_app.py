@@ -2185,152 +2185,78 @@ elif active_tab == "AuditTrails":
                 record_history = record_history[record_history['record_id'] == selected_record]
             
             if not record_history.empty:
-                # Display as timeline
+                # Display as timeline using Streamlit components
                 st.markdown(f"##### Timeline for {table_select}: {selected_record}")
                 
-                # Sort by timestamp
+                # Sort by timestamp (newest first)
                 record_history = record_history.sort_values('timestamp', ascending=False)
                 record_history['timestamp'] = pd.to_datetime(record_history['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
                 
-                # Create timeline visualization
-                timeline_html = """
-                <style>
-                .timeline {
-                    position: relative;
-                    max-width: 800px;
-                    margin: 0 auto;
-                }
-                .timeline::after {
-                    content: '';
-                    position: absolute;
-                    width: 6px;
-                    background-color: #6A0DAD;
-                    top: 0;
-                    bottom: 0;
-                    left: 31px;
-                    margin-left: -3px;
-                }
-                .timeline-item {
-                    padding: 10px 40px;
-                    position: relative;
-                    background-color: inherit;
-                    width: 100%;
-                }
-                .timeline-item::after {
-                    content: '';
-                    position: absolute;
-                    width: 20px;
-                    height: 20px;
-                    background-color: white;
-                    border: 4px solid #6A0DAD;
-                    top: 15px;
-                    left: 22px;
-                    border-radius: 50%;
-                    z-index: 1;
-                }
-                .timeline-content {
-                    padding: 15px;
-                    background-color: white;
-                    position: relative;
-                    border-radius: 6px;
-                    border: 1px solid #e0e0e0;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                }
-                .timeline-action {
-                    font-weight: bold;
-                    color: #6A0DAD;
-                    margin-bottom: 5px;
-                }
-                .timeline-user {
-                    color: #666;
-                    font-size: 0.9em;
-                    margin-bottom: 5px;
-                }
-                .timeline-change {
-                    background-color: #f5f5f5;
-                    padding: 8px;
-                    border-radius: 4px;
-                    margin: 5px 0;
-                    font-size: 0.9em;
-                }
-                .create { border-left: 4px solid #10b981; }
-                .update { border-left: 4px solid #3b82f6; }
-                .delete { border-left: 4px solid #ef4444; }
-                .usage { border-left: 4px solid #f59e0b; }
-                </style>
-                <div class="timeline">
-                """
-                
-                for _, event in record_history.iterrows():
-                    # Skip entries where old and new values are the same or both None
+                # Create expanders for each event
+                for idx, event in record_history.iterrows():
+                    # Skip entries where old and new values are the same
                     old_val = event['old_value']
                     new_val = event['new_value']
                     
-                    # Check if it's a meaningful change
                     if pd.notna(old_val) and pd.notna(new_val) and str(old_val) == str(new_val):
-                        continue  # Skip duplicate entries
+                        continue
                     if pd.isna(old_val) and pd.isna(new_val):
-                        continue  # Skip None → None entries
+                        continue
                     
-                    action_class = str(event['action_type']).lower()
-                    if 'create' in action_class or 'add' in action_class:
-                        color_class = 'create'
-                    elif 'update' in action_class:
-                        color_class = 'update'
-                    elif 'delete' in action_class:
-                        color_class = 'delete'
-                    elif 'usage' in action_class:
-                        color_class = 'usage'
-                    elif 'expiry' in action_class:
-                        color_class = 'update'
+                    # Determine icon and color based on action type
+                    action_type = str(event['action_type']).lower()
+                    if 'create' in action_type or 'add' in action_type:
+                        icon = "🟢"
+                        color = "#10b981"
+                    elif 'update' in action_type:
+                        icon = "🔵"
+                        color = "#3b82f6"
+                    elif 'delete' in action_type:
+                        icon = "🔴"
+                        color = "#ef4444"
+                    elif 'usage' in action_type:
+                        icon = "🟡"
+                        color = "#f59e0b"
                     else:
-                        color_class = ''
+                        icon = "⚪"
+                        color = "#6b7280"
                     
-                    change_html = ""
-                    if pd.notna(event['field_name']) and pd.notna(old_val) and pd.notna(new_val):
-                        # Only show change if values are different
-                        if str(old_val) != str(new_val):
-                            change_html = f"""
-                            <div class="timeline-change">
-                                <strong>{event['field_name']}:</strong><br>
-                                <span style="color: #ef4444;">{old_val}</span> → 
-                                <span style="color: #10b981;">{new_val}</span>
-                            </div>
-                            """
-                    elif pd.notna(event['field_name']) and pd.notna(new_val):
-                        # Only new value (creation)
-                        change_html = f"""
-                        <div class="timeline-change">
-                            <strong>{event['field_name']}:</strong><br>
-                            <span style="color: #10b981;">Created: {new_val}</span>
-                        </div>
-                        """
-                    elif pd.notna(event['field_name']) and pd.notna(old_val):
-                        # Only old value (deletion)
-                        change_html = f"""
-                        <div class="timeline-change">
-                            <strong>{event['field_name']}:</strong><br>
-                            <span style="color: #ef4444;">Deleted: {old_val}</span>
-                        </div>
-                        """
-                    
-                    timeline_html += f"""
-                    <div class="timeline-item">
-                        <div class="timeline-content {color_class}">
-                            <div class="timeline-action">{event['action_type']}</div>
-                            <div class="timeline-user">By {event['user_name']} at {event['timestamp']}</div>
-                            {change_html}
-                            <div style="font-size: 0.8em; color: #888; margin-top: 5px;">
-                                {event['notes'] or ''}
-                            </div>
-                        </div>
-                    </div>
-                    """
+                    # Create an expander for each event
+                    with st.expander(f"{icon} {event['action_type']} - {event['timestamp']}", expanded=False):
+                        col1, col2 = st.columns([1, 3])
+                        
+                        with col1:
+                            st.markdown(f"**User:** {event['user_name']}")
+                            st.markdown(f"**Table:** {event['table_name']}")
+                            st.markdown(f"**Record ID:** {event['record_id']}")
+                        
+                        with col2:
+                            if pd.notna(event['field_name']):
+                                st.markdown(f"**Field:** `{event['field_name']}`")
+                            
+                            if pd.notna(old_val) and pd.notna(new_val) and str(old_val) != str(new_val):
+                                col_old, col_arrow, col_new = st.columns([1, 1, 1])
+                                with col_old:
+                                    st.error(f"**Old:** {old_val}")
+                                with col_arrow:
+                                    st.markdown("<div style='text-align: center; font-size: 20px;'>→</div>", unsafe_allow_html=True)
+                                with col_new:
+                                    st.success(f"**New:** {new_val}")
+                            
+                            elif pd.notna(new_val):
+                                st.success(f"**Created:** {new_val}")
+                            
+                            elif pd.notna(old_val):
+                                st.error(f"**Deleted:** {old_val}")
+                            
+                            if pd.notna(event['notes']):
+                                st.info(f"**Notes:** {event['notes']}")
                 
-                timeline_html += "</div>"
-                
-                # FIX: Render the HTML properly
-                st.markdown(timeline_html, unsafe_allow_html=True)
+                # Also show as table
+                st.markdown("##### 📋 Tabular View")
+                display_cols = ['timestamp', 'user_name', 'action_type', 'field_name', 
+                              'old_value', 'new_value', 'notes']
+                st.dataframe(record_history[display_cols], use_container_width=True, height=400)
                 
                 # Also show as table (optional)
                 with st.expander("📋 View as Table"):
@@ -3291,6 +3217,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
