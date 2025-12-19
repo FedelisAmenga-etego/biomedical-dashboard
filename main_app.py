@@ -2273,16 +2273,16 @@ elif active_tab == "AuditTrails":
                         continue  # Skip None → None entries
                     
                     action_class = str(event['action_type']).lower()
-                    if 'create' in action_class:
+                    if 'create' in action_class or 'add' in action_class:
                         color_class = 'create'
                     elif 'update' in action_class:
                         color_class = 'update'
                     elif 'delete' in action_class:
                         color_class = 'delete'
-                    elif 'usage' in action_class or 'inventory_usage' in action_class:
+                    elif 'usage' in action_class:
                         color_class = 'usage'
                     elif 'expiry' in action_class:
-                        color_class = 'update'  # Use update style for expiry changes
+                        color_class = 'update'
                     else:
                         color_class = ''
                     
@@ -2328,13 +2328,15 @@ elif active_tab == "AuditTrails":
                     """
                 
                 timeline_html += "</div>"
+                
+                # FIX: Render the HTML properly
                 st.markdown(timeline_html, unsafe_allow_html=True)
                 
-                # Also show as table
-                st.markdown("##### Tabular View")
-                display_cols = ['timestamp', 'user_name', 'action_type', 'field_name', 
-                              'old_value', 'new_value', 'notes']
-                st.dataframe(record_history[display_cols], use_container_width=True, height=300)
+                # Also show as table (optional)
+                with st.expander("📋 View as Table"):
+                    display_cols = ['timestamp', 'user_name', 'action_type', 'field_name', 
+                                  'old_value', 'new_value', 'notes']
+                    st.dataframe(record_history[display_cols], use_container_width=True, height=300)
             else:
                 st.info("No change history found for this record.")
         else:
@@ -3289,6 +3291,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
