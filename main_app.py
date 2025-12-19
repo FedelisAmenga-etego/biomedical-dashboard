@@ -2633,8 +2633,6 @@ elif active_tab == "Settings":
                                                 help="Unique username for login")
                     new_fullname = st.text_input("Full Name*", 
                                                 placeholder="e.g., John Smith")
-                    new_email = st.text_input("Email Address", 
-                                             placeholder="e.g., jsmith@nhrc.gov.gh")
                 
                 with col2:
                     new_role = st.selectbox("Role*", 
@@ -2673,8 +2671,6 @@ elif active_tab == "Settings":
                             'department': new_department
                         }
                         
-                        if new_email:
-                            user_data['email'] = new_email.strip()
                         
                         # Get client info for audit
                         ip_address, user_agent = get_client_info()
@@ -3181,6 +3177,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
