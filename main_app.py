@@ -1006,31 +1006,51 @@ elif active_tab == "Inventory":
                     submitted = st.form_submit_button("💾 Save Changes", type="primary")
                     
                     if submitted:
-                        updates = {
-                            'quantity': new_quantity,
-                            'storage_location': new_location,
-                            'category': new_category,
-                            'reorder_level': new_reorder_level,
-                            'notes': new_notes
-                        }
+                        # Only include fields that have actually changed
+                        updates = {}
                         
-                        # Handle expiry date
-                        if new_expiry is not None:
-                            if isinstance(new_expiry, datetime) or hasattr(new_expiry, 'strftime'):
-                                updates['expiry_date'] = new_expiry.strftime('%Y-%m-%d')
-                            elif new_expiry:  # If it's a string
-                                updates['expiry_date'] = new_expiry
+                        # Check each field for changes
+                        if new_quantity != int(current_qty):
+                            updates['quantity'] = new_quantity
+                        
+                        if new_location != item_data.get('storage_location', 'Main Store'):
+                            updates['storage_location'] = new_location
+                        
+                        if new_category != item_data.get('category', 'General Supplies'):
+                            updates['category'] = new_category
+                        
+                        if new_reorder_level != int(item_data.get('reorder_level', 50)):
+                            updates['reorder_level'] = new_reorder_level
+                        
+                        if new_notes != item_data.get('notes', ''):
+                            updates['notes'] = new_notes
+                        
+                        # Handle expiry date changes
+                        current_expiry = item_data.get('expiry_date')
+                        if expiry_option == "Change":
+                            new_expiry_str = new_expiry.strftime('%Y-%m-%d') if hasattr(new_expiry, 'strftime') else str(new_expiry)
+                            current_expiry_str = pd.to_datetime(current_expiry).strftime('%Y-%m-%d') if pd.notna(current_expiry) else None
+                            if new_expiry_str != current_expiry_str:
+                                updates['expiry_date'] = new_expiry_str
+                        elif expiry_option == "Remove":
+                            if pd.notna(current_expiry):
+                                updates['expiry_date'] = None
+                        elif expiry_option == "Yes":  # Adding new expiry date
+                            new_expiry_str = new_expiry.strftime('%Y-%m-%d') if hasattr(new_expiry, 'strftime') else str(new_expiry)
+                            updates['expiry_date'] = new_expiry_str
+                        
+                        # Only proceed if there are actual changes
+                        if updates:
+                            # Get client info for audit
+                            ip_address, user_agent = get_client_info()
+                            
+                            if db.update_inventory_item(item_data['item_id'], updates, user):
+                                st.success("✅ Item updated successfully!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to update item.")
                         else:
-                            updates['expiry_date'] = None
-                        
-                        # Get client info for audit
-                        ip_address, user_agent = get_client_info()
-                        
-                        if db.update_inventory_item(item_data['item_id'], updates, user):
-                            st.success("✅ Item updated successfully!")
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to update item.")
+                            st.info("No changes were made to the item.")
 
     with tab4:
         st.markdown("#### Manual Quantity Adjustment")
@@ -2242,6 +2262,16 @@ elif active_tab == "AuditTrails":
                 """
                 
                 for _, event in record_history.iterrows():
+                    # Skip entries where old and new values are the same or both None
+                    old_val = event['old_value']
+                    new_val = event['new_value']
+                    
+                    # Check if it's a meaningful change
+                    if pd.notna(old_val) and pd.notna(new_val) and str(old_val) == str(new_val):
+                        continue  # Skip duplicate entries
+                    if pd.isna(old_val) and pd.isna(new_val):
+                        continue  # Skip None → None entries
+                    
                     action_class = str(event['action_type']).lower()
                     if 'create' in action_class:
                         color_class = 'create'
@@ -2249,20 +2279,38 @@ elif active_tab == "AuditTrails":
                         color_class = 'update'
                     elif 'delete' in action_class:
                         color_class = 'delete'
-                    elif 'usage' in action_class:
+                    elif 'usage' in action_class or 'inventory_usage' in action_class:
                         color_class = 'usage'
+                    elif 'expiry' in action_class:
+                        color_class = 'update'  # Use update style for expiry changes
                     else:
                         color_class = ''
                     
                     change_html = ""
-                    if pd.notna(event['field_name']):
-                        old_val = str(event['old_value']) if pd.notna(event['old_value']) else 'None'
-                        new_val = str(event['new_value']) if pd.notna(event['new_value']) else 'None'
+                    if pd.notna(event['field_name']) and pd.notna(old_val) and pd.notna(new_val):
+                        # Only show change if values are different
+                        if str(old_val) != str(new_val):
+                            change_html = f"""
+                            <div class="timeline-change">
+                                <strong>{event['field_name']}:</strong><br>
+                                <span style="color: #ef4444;">{old_val}</span> → 
+                                <span style="color: #10b981;">{new_val}</span>
+                            </div>
+                            """
+                    elif pd.notna(event['field_name']) and pd.notna(new_val):
+                        # Only new value (creation)
                         change_html = f"""
                         <div class="timeline-change">
                             <strong>{event['field_name']}:</strong><br>
-                            <span style="color: #ef4444;">{old_val}</span> → 
-                            <span style="color: #10b981;">{new_val}</span>
+                            <span style="color: #10b981;">Created: {new_val}</span>
+                        </div>
+                        """
+                    elif pd.notna(event['field_name']) and pd.notna(old_val):
+                        # Only old value (deletion)
+                        change_html = f"""
+                        <div class="timeline-change">
+                            <strong>{event['field_name']}:</strong><br>
+                            <span style="color: #ef4444;">Deleted: {old_val}</span>
                         </div>
                         """
                     
@@ -3241,6 +3289,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
