@@ -453,6 +453,38 @@ class SupabaseDatabase:
             import traceback
             traceback.print_exc()
             return False
+
+    def cleanup_duplicate_audits(self):
+        """Remove duplicate audit entries where old and new values are the same"""
+        try:
+            # Get all UPDATE audit entries
+            response = self.supabase.table("audit_logs") \
+                .select("*") \
+                .eq("action_type", "UPDATE") \
+                .execute()
+            
+            duplicates_found = 0
+            for audit in response.data:
+                old_val = audit.get('old_value')
+                new_val = audit.get('new_value')
+                
+                # Check if values are the same
+                if old_val and new_val and str(old_val) == str(new_val):
+                    # Delete duplicate entry
+                    delete_response = self.supabase.table("audit_logs") \
+                        .delete() \
+                        .eq("id", audit['id']) \
+                        .execute()
+                    
+                    if delete_response.data:
+                        duplicates_found += 1
+            
+            print(f"Cleaned up {duplicates_found} duplicate audit entries")
+            return duplicates_found
+            
+        except Exception as e:
+            print("Cleanup duplicate audits error:", e)
+            return 0
     # ------------------------------------------------------------------
     # REPORTING
     # ------------------------------------------------------------------
@@ -878,6 +910,7 @@ class SupabaseDatabase:
         except Exception as e:
             print("Get user by username error:", e)
             return None
+
 
 
 
