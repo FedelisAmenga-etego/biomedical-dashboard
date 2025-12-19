@@ -1993,7 +1993,7 @@ elif active_tab == "AuditTrails":
                                         "USER_DELETE", "LOGIN", "LOGOUT", "ADD", 
                                         "EXPIRY_UPDATE", "ITEM_EDIT", "QUANTITY_UPDATE",
                                         "REORDER_LEVEL_UPDATE", "ADD_STOCK", "REMOVE_STOCK",
-                                        "AUDIT_CREATE"])
+                                        "AUDIT_CREATE", "UPDATE_ATTEMPT"])
         
         with col3:
             table_filter = st.selectbox("Table", 
@@ -3289,6 +3289,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
