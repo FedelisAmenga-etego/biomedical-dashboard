@@ -78,57 +78,206 @@ class SupabaseDatabase:
             return pd.DataFrame()
 
     def add_inventory_item(self, item_data: Dict, user: Dict = None):
-        try:
-            response = self.supabase.table("inventory").insert(item_data).execute()
-
-            if response.data:
-                self._log_audit_event(
-                    user=user,
-                    action_type="ADD",
-                    table_name="inventory",
-                    record_id=item_data.get("item_id"),
-                    notes="Inventory item added"
-                )
-                return True
-
-            return False
-        except Exception as e:
-            print("Add inventory error:", e)
-            return False
-
-    def update_inventory_item(self, item_id: str, updates: Dict, user: Dict = None):
-        try:
-            old_response = self.supabase.table("inventory") \
-                .select("*") \
-                .eq("item_id", item_id) \
-                .execute()
-
-            old_data = old_response.data[0] if old_response.data else {}
-
-            response = self.supabase.table("inventory") \
-                .update(updates) \
-                .eq("item_id", item_id) \
-                .execute()
-
-            if response.data:
-                for field, new_val in updates.items():
+            try:
+                response = self.supabase.table("inventory").insert(item_data).execute()
+    
+                if response.data:
+                    # Get client info for audit
+                    ip_address = None
+                    user_agent = None
+                    try:
+                        import streamlit as st
+                        ctx = st.runtime.get_instance()._session_mgr.list_active_sessions()[0].request
+                        if hasattr(ctx, 'headers'):
+                            headers = ctx.headers
+                            ip_address = headers.get('X-Forwarded-For', headers.get('Remote-Addr', 'Unknown'))
+                            user_agent = headers.get('User-Agent', 'Unknown')
+                    except:
+                        pass
+    
+                    # Log the item creation with all details
+                    item_details = []
+                    for key, value in item_data.items():
+                        if key not in ['password_hash', 'created_at']:  # Skip sensitive/auto fields
+                            item_details.append(f"{key}: {value}")
+                    
                     self._log_audit_event(
                         user=user,
-                        action_type="UPDATE",
+                        action_type="ADD",
+                        table_name="inventory",
+                        record_id=item_data.get("item_id"),
+                        field_name=None,
+                        old_value=None,
+                        new_value=None,
+                        notes=f"Inventory item added: {item_data.get('item_name')}. Details: {', '.join(item_details[:5])}...",  # Limit length
+                        ip_address=ip_address,
+                        user_agent=user_agent
+                    )
+                    return True
+    
+                return False
+            except Exception as e:
+                print("Add inventory error:", e)
+                return False
+
+    def update_inventory_item(self, item_id: str, updates: Dict, user: Dict = None):
+            """Update inventory item with comprehensive audit logging"""
+            try:
+                # Get current item data BEFORE update
+                old_response = self.supabase.table("inventory") \
+                    .select("*") \
+                    .eq("item_id", item_id) \
+                    .execute()
+    
+                if not old_response.data:
+                    print(f"Item {item_id} not found for update")
+                    return False
+    
+                old_data = old_response.data[0]
+    
+                # Perform the update
+                response = self.supabase.table("inventory") \
+                    .update(updates) \
+                    .eq("item_id", item_id) \
+                    .execute()
+    
+                if response.data:
+                    # Get client info for audit
+                    ip_address = None
+                    user_agent = None
+                    try:
+                        import streamlit as st
+                        ctx = st.runtime.get_instance()._session_mgr.list_active_sessions()[0].request
+                        if hasattr(ctx, 'headers'):
+                            headers = ctx.headers
+                            ip_address = headers.get('X-Forwarded-For', headers.get('Remote-Addr', 'Unknown'))
+                            user_agent = headers.get('User-Agent', 'Unknown')
+                    except:
+                        pass
+    
+                    # Log each field that was changed
+                    for field, new_val in updates.items():
+                        old_val = old_data.get(field)
+                        
+                        # Only log if value actually changed
+                        if str(old_val) != str(new_val):
+                            # Determine action type based on field
+                            if field == 'expiry_date':
+                                action_type = "EXPIRY_UPDATE"
+                                notes = f"Updated expiry date for item {item_id}"
+                            elif field == 'quantity':
+                                # Check if this is usage-related or manual adjustment
+                                action_type = "QUANTITY_UPDATE"
+                                notes = f"Updated quantity for item {item_id}"
+                            elif field == 'reorder_level':
+                                action_type = "REORDER_LEVEL_UPDATE"
+                                notes = f"Updated reorder level for item {item_id}"
+                            else:
+                                action_type = "UPDATE"
+                                notes = f"Updated {field} for item {item_id}"
+                            
+                            self._log_audit_event(
+                                user=user,
+                                action_type=action_type,
+                                table_name="inventory",
+                                record_id=item_id,
+                                field_name=field,
+                                old_value=old_val,
+                                new_value=new_val,
+                                notes=notes,
+                                ip_address=ip_address,
+                                user_agent=user_agent
+                            )
+                    
+                    # Also log a summary audit event
+                    self._log_audit_event(
+                        user=user,
+                        action_type="ITEM_EDIT",
                         table_name="inventory",
                         record_id=item_id,
-                        field_name=field,
-                        old_value=old_data.get(field),
-                        new_value=new_val,
-                        notes="Inventory updated"
+                        field_name=None,
+                        old_value=None,
+                        new_value=None,
+                        notes=f"Edited item {old_data.get('item_name', item_id)}. Fields updated: {', '.join(updates.keys())}",
+                        ip_address=ip_address,
+                        user_agent=user_agent
                     )
-                return True
+                    
+                    return True
+    
+                return False
+            except Exception as e:
+                print("Update inventory error:", e)
+                import traceback
+                traceback.print_exc()
+                return False
 
-            return False
+    def adjust_inventory_quantity(self, item_id: str, adjustment_type: str, 
+                                  quantity: int, reason: str, user: Dict = None):
+        """Manually adjust inventory quantity (add or remove)"""
+        try:
+            # Get current quantity
+            response = self.supabase.table("inventory") \
+                .select("quantity, item_name") \
+                .eq("item_id", item_id) \
+                .execute()
+
+            if not response.data:
+                return False, "Item not found"
+
+            current_qty = response.data[0].get("quantity", 0)
+            item_name = response.data[0].get("item_name", item_id)
+            
+            # Calculate new quantity
+            if adjustment_type == "add":
+                new_qty = current_qty + quantity
+                action = "ADD_STOCK"
+            elif adjustment_type == "remove":
+                new_qty = max(0, current_qty - quantity)
+                action = "REMOVE_STOCK"
+            else:
+                return False, "Invalid adjustment type"
+
+            # Update inventory
+            update_response = self.supabase.table("inventory") \
+                .update({"quantity": new_qty}) \
+                .eq("item_id", item_id) \
+                .execute()
+
+            if update_response.data:
+                # Get client info for audit
+                ip_address = None
+                user_agent = None
+                try:
+                    import streamlit as st
+                    ctx = st.runtime.get_instance()._session_mgr.list_active_sessions()[0].request
+                    if hasattr(ctx, 'headers'):
+                        headers = ctx.headers
+                        ip_address = headers.get('X-Forwarded-For', headers.get('Remote-Addr', 'Unknown'))
+                        user_agent = headers.get('User-Agent', 'Unknown')
+                except:
+                    pass
+
+                # Log the adjustment
+                self._log_audit_event(
+                    user=user,
+                    action_type=action,
+                    table_name="inventory",
+                    record_id=item_id,
+                    field_name="quantity",
+                    old_value=current_qty,
+                    new_value=new_qty,
+                    notes=f"Manual {adjustment_type} of {quantity} units. Reason: {reason}. Item: {item_name}",
+                    ip_address=ip_address,
+                    user_agent=user_agent
+                )
+                return True, f"Successfully {adjustment_type}ed {quantity} units"
+
+            return False, "Failed to update inventory"
         except Exception as e:
-            print("Update inventory error:", e)
-            return False
-
+            print("Adjust inventory quantity error:", e)
+            return False, str(e)
+    
     # ------------------------------------------------------------------
     # USAGE LOGGING (WORKING + AUDITED)
     # ------------------------------------------------------------------
@@ -697,6 +846,7 @@ class SupabaseDatabase:
         except Exception as e:
             print("Get user by username error:", e)
             return None
+
 
 
 
