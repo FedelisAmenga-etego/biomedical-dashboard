@@ -2633,8 +2633,6 @@ elif active_tab == "Settings":
                                                 help="Unique username for login")
                     new_fullname = st.text_input("Full Name*", 
                                                 placeholder="e.g., Fedelis Amenga-etego")
-                
-                with col2:
                     new_role = st.selectbox("Role*", 
                                           ["user", "manager", "admin"],
                                           format_func=lambda x: {
@@ -2642,6 +2640,8 @@ elif active_tab == "Settings":
                                               "manager": "Manager",
                                               "admin": "Administrator"
                                           }[x])
+                
+                with col2:
                     new_department = st.selectbox("Department*",
                                                 ["Biomedical", "Microbiology", "Parasitology", 
                                                  "Clinical Lab", "Research", "Administration", "IT"])
@@ -3177,6 +3177,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
