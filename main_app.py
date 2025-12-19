@@ -1897,7 +1897,7 @@ elif active_tab == "AuditTrails":
     
     tab1, tab2, tab3, tab4 = st.tabs(["Audit Logs", "Change History", "Statistics", "Export"])
     
-        with tab1:
+    with tab1:
         st.markdown("#### 📝 Audit Logs - Complete History")
         
         # Filters
@@ -3181,6 +3181,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
