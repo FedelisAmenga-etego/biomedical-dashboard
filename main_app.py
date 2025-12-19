@@ -1032,6 +1032,64 @@ elif active_tab == "Inventory":
                         else:
                             st.error("❌ Failed to update item.")
 
+    with tab4:
+        st.markdown("#### Manual Quantity Adjustment")
+        
+        if not inventory_df.empty:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                selected_item = st.selectbox("Select Item", inventory_df['item_name'].unique())
+                adjustment_type = st.radio("Adjustment Type", ["Add Stock", "Remove Stock"])
+                
+            with col2:
+                if selected_item:
+                    item_data = inventory_df[inventory_df['item_name'] == selected_item].iloc[0]
+                    current_qty = item_data.get('quantity', 0)
+                    
+                    st.info(f"""
+                    **Current Status:**
+                    - **Item:** {selected_item}
+                    - **Current Quantity:** {current_qty} {item_data.get('unit', 'units')}
+                    - **Item ID:** {item_data['item_id']}
+                    """)
+            
+            # Adjustment form
+            with st.form("manual_adjustment_form"):
+                quantity = st.number_input("Quantity", min_value=1, value=1)
+                reason = st.selectbox("Reason", 
+                                    ["Stock Take Correction", "Received New Stock", 
+                                     "Damaged/Lost", "Transfer", "Other"])
+                other_reason = st.text_input("Other Reason (if selected 'Other')", 
+                                           disabled=reason != "Other")
+                notes = st.text_area("Additional Notes")
+                
+                submitted = st.form_submit_button("Apply Adjustment", type="primary")
+                
+                if submitted:
+                    final_reason = other_reason if reason == "Other" and other_reason else reason
+                    
+                    # Get client info
+                    ip_address, user_agent = get_client_info()
+                    
+                    # Apply adjustment
+                    adj_type = "add" if adjustment_type == "Add Stock" else "remove"
+                    success, message = db.adjust_inventory_quantity(
+                        item_data['item_id'], 
+                        adj_type, 
+                        quantity, 
+                        f"{final_reason}: {notes}" if notes else final_reason,
+                        user
+                    )
+                    
+                    if success:
+                        st.success(f"✅ {message}")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {message}")
+        else:
+            st.info("No inventory items available for adjustment.")
+
 # USAGE TRACKING TAB
 # USAGE TRACKING TAB
 elif active_tab == "Usage":
@@ -1913,7 +1971,9 @@ elif active_tab == "AuditTrails":
                                        ["All", "CREATE", "UPDATE", "DELETE", "USAGE", 
                                         "INVENTORY_USAGE", "USER_CREATE", "USER_UPDATE", 
                                         "USER_DELETE", "LOGIN", "LOGOUT", "ADD", 
-                                        "EXPIRY_UPDATE", "ITEM_EDIT"])
+                                        "EXPIRY_UPDATE", "ITEM_EDIT", "QUANTITY_UPDATE",
+                                        "REORDER_LEVEL_UPDATE", "ADD_STOCK", "REMOVE_STOCK",
+                                        "AUDIT_CREATE"])
         
         with col3:
             table_filter = st.selectbox("Table", 
@@ -1958,12 +2018,14 @@ elif active_tab == "AuditTrails":
             display_df['timestamp'] = pd.to_datetime(display_df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
             
             # Color code action types
+                        
             def color_action(action):
-                if action in ['CREATE', 'USER_CREATE', 'ADD']:
+                if action in ['CREATE', 'USER_CREATE', 'ADD', 'ADD_STOCK']:
                     return '🟢'
-                elif action in ['UPDATE', 'USER_UPDATE', 'EXPIRY_UPDATE', 'ITEM_EDIT']:
+                elif action in ['UPDATE', 'USER_UPDATE', 'EXPIRY_UPDATE', 'ITEM_EDIT', 
+                               'QUANTITY_UPDATE', 'REORDER_LEVEL_UPDATE']:
                     return '🔵'
-                elif action in ['DELETE', 'USER_DELETE']:
+                elif action in ['DELETE', 'USER_DELETE', 'REMOVE_STOCK']:
                     return '🔴'
                 elif action in ['USAGE', 'INVENTORY_USAGE']:
                     return '🟡'
@@ -1971,6 +2033,8 @@ elif active_tab == "AuditTrails":
                     return '🟣'
                 elif action == 'LOGOUT':
                     return '⚫'
+                elif action == 'AUDIT_CREATE':
+                    return '⚪'
                 else:
                     return '⚪'
             
@@ -3177,6 +3241,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
