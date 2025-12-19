@@ -2629,10 +2629,10 @@ elif active_tab == "Settings":
                 
                 with col1:
                     new_username = st.text_input("Username*", 
-                                                placeholder="e.g., jsmith",
+                                                placeholder="e.g., fedelis",
                                                 help="Unique username for login")
                     new_fullname = st.text_input("Full Name*", 
-                                                placeholder="e.g., John Smith")
+                                                placeholder="e.g., Fedelis Amenga-etego")
                 
                 with col2:
                     new_role = st.selectbox("Role*", 
@@ -3177,6 +3177,7 @@ st.markdown(
     unsafe_allow_html=True
 
 )
+
 
 
 
