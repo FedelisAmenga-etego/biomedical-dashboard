@@ -133,7 +133,7 @@ st.markdown(
 
 # ========== MAIN NAVIGATION TABS (MOVED FROM SIDEBAR) ==========
 # Define the tabs
-tabs = tabs = ["🏠 Dashboard", "📦 Inventory", "📝 Usage", "⏰ Expiry", "📈 Analytics", "📋 Audit Trails", "⚙️ Settings"]
+tabs = ["🏠 Dashboard", "📦 Inventory", "📝 Usage", "⏰ Expiry", "📈 Analytics", "📋 Audit Trails", "⚙️ Settings"]
 
 # Create tabs using radio buttons with custom styling
 selected_tab = st.radio(
@@ -710,7 +710,6 @@ if active_tab == "Dashboard":
     st.markdown("---")
     
     # Recent Items Table
-        # Recent Items Table
     st.markdown("#### 📋 Recent Inventory Items")
     if not inventory_df.empty:
         # Use quantity column
@@ -725,6 +724,7 @@ if active_tab == "Dashboard":
 elif active_tab == "Inventory":
     st.markdown('<div class="section-header"><h2>📦 Inventory Management</h2></div>', unsafe_allow_html=True)
     
+    # FIX: Only create 3 tabs, not 4
     tab1, tab2, tab3 = st.tabs(["View Inventory", "Add Item", "Edit Item"])
     
     with tab1:
@@ -940,6 +940,7 @@ elif active_tab == "Inventory":
                         st.rerun()
                     else:
                         st.error("❌ Failed to add item.")
+    
     with tab3:
         st.markdown("#### ✏️ Edit Inventory Item")
         
@@ -1052,138 +1053,80 @@ elif active_tab == "Inventory":
                         else:
                             st.info("No changes were made to the item.")
 
-    with tab4:
-        st.markdown("#### Manual Quantity Adjustment")
-        
-        if not inventory_df.empty:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                selected_item = st.selectbox("Select Item", inventory_df['item_name'].unique())
-                adjustment_type = st.radio("Adjustment Type", ["Add Stock", "Remove Stock"])
-                
-            with col2:
-                if selected_item:
-                    item_data = inventory_df[inventory_df['item_name'] == selected_item].iloc[0]
-                    current_qty = item_data.get('quantity', 0)
-                    
-                    st.info(f"""
-                    **Current Status:**
-                    - **Item:** {selected_item}
-                    - **Current Quantity:** {current_qty} {item_data.get('unit', 'units')}
-                    - **Item ID:** {item_data['item_id']}
-                    """)
-            
-            # Adjustment form
-            with st.form("manual_adjustment_form"):
-                quantity = st.number_input("Quantity", min_value=1, value=1)
-                reason = st.selectbox("Reason", 
-                                    ["Stock Take Correction", "Received New Stock", 
-                                     "Damaged/Lost", "Transfer", "Other"])
-                other_reason = st.text_input("Other Reason (if selected 'Other')", 
-                                           disabled=reason != "Other")
-                notes = st.text_area("Additional Notes")
-                
-                submitted = st.form_submit_button("Apply Adjustment", type="primary")
-                
-                if submitted:
-                    final_reason = other_reason if reason == "Other" and other_reason else reason
-                    
-                    # Get client info
-                    ip_address, user_agent = get_client_info()
-                    
-                    # Apply adjustment
-                    adj_type = "add" if adjustment_type == "Add Stock" else "remove"
-                    success, message = db.adjust_inventory_quantity(
-                        item_data['item_id'], 
-                        adj_type, 
-                        quantity, 
-                        f"{final_reason}: {notes}" if notes else final_reason,
-                        user
-                    )
-                    
-                    if success:
-                        st.success(f"✅ {message}")
-                        st.rerun()
-                    else:
-                        st.error(f"❌ {message}")
-        else:
-            st.info("No inventory items available for adjustment.")
-
-# USAGE TRACKING TAB
 # USAGE TRACKING TAB
 elif active_tab == "Usage":
     st.markdown('<div class="section-header"><h2>📝 Usage Tracking</h2></div>', unsafe_allow_html=True)
     
-    tab1, tab2, tab3 = st.tabs(["Log Usage", "Usage History", "Trend Analysis"])  # Added Trend Analysis tab
-    
-    with tab1:
-        st.markdown("#### 📝 Log Item Usage")
+    # FIX: Add try-except to handle potential errors that cause logout
+    try:
+        tab1, tab2, tab3 = st.tabs(["Log Usage", "Usage History", "Trend Analysis"])
         
-        if not inventory_df.empty:
-            with st.form("log_usage_form"):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    selected_item = st.selectbox("Select Item*", inventory_df['item_name'].unique())
-                    if selected_item:
-                        item_data = inventory_df[inventory_df['item_name'] == selected_item].iloc[0]
-                        # Get current quantity
-                        current_qty = item_data.get('quantity', 0)
-                        max_units = int(current_qty)
-                        units_used = st.number_input("Units Used*", 
-                                                    min_value=1, 
-                                                    max_value=max_units,
-                                                    value=1,
-                                                    help="Number of units used")
-                        purpose = st.text_input("Purpose/Project*", 
-                                               placeholder="e.g., Research Project, Daily Operations")
-                
-                with col2:
-                    department = st.selectbox("Department", 
-                                            ["Biomedical", "Microbiology", "Parasitology", 
-                                             "Clinical Lab", "Research", "Administration"])
-                    notes = st.text_area("Notes", placeholder="Additional details...")
-                
-                submitted = st.form_submit_button("📝 Log Usage", type="primary")
-                
-                if submitted:
-                    if not purpose:
-                        st.error("Purpose is required!")
-                    elif units_used <= 0:
-                        st.error("Units used must be greater than 0!")
-                    elif units_used > max_units:
-                        st.error(f"Cannot use more than {max_units} units (current stock)")
-                    else:
-                        usage_data = {
-                            'item_id': str(item_data['item_id']),  # Ensure it's a string
-                            'item_name': str(selected_item),
-                            'units_used': int(units_used),  # Ensure it's an integer
-                            'purpose': str(purpose),
-                            'used_by': str(user['full_name']),
-                            'department': str(department),
-                            'notes': str(notes) if notes else ""
-                        }
-                        
-                        st.write("### Debug Info:")
-                        st.json(usage_data)
-                        
-                        # Get client info for audit
-                        ip_address, user_agent = get_client_info()
-                        
-                        # Show loading spinner
-                        with st.spinner("Logging usage..."):
-                            success = db.log_usage(usage_data, user)
-                        
-                        if success:
-                            st.success(f"✅ Usage of {units_used} units logged successfully!")
-                            # Force refresh data
-                            st.cache_data.clear()
-                            st.rerun()
+        with tab1:
+            st.markdown("#### 📝 Log Item Usage")
+            
+            if not inventory_df.empty:
+                with st.form("log_usage_form"):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        selected_item = st.selectbox("Select Item*", inventory_df['item_name'].unique())
+                        if selected_item:
+                            item_data = inventory_df[inventory_df['item_name'] == selected_item].iloc[0]
+                            # Get current quantity
+                            current_qty = item_data.get('quantity', 0)
+                            max_units = int(current_qty)
+                            units_used = st.number_input("Units Used*", 
+                                                        min_value=1, 
+                                                        max_value=max_units if max_units > 0 else 1,
+                                                        value=1,
+                                                        help="Number of units used")
+                            purpose = st.text_input("Purpose/Project*", 
+                                                   placeholder="e.g., Research Project, Daily Operations")
+                    
+                    with col2:
+                        department = st.selectbox("Department", 
+                                                ["Biomedical", "Microbiology", "Parasitology", 
+                                                 "Clinical Lab", "Research", "Administration"])
+                        notes = st.text_area("Notes", placeholder="Additional details...")
+                    
+                    submitted = st.form_submit_button("📝 Log Usage", type="primary")
+                    
+                    if submitted:
+                        if not purpose:
+                            st.error("Purpose is required!")
+                        elif units_used <= 0:
+                            st.error("Units used must be greater than 0!")
+                        elif units_used > max_units:
+                            st.error(f"Cannot use more than {max_units} units (current stock)")
                         else:
-                            st.error("❌ Failed to log usage.")
-                            st.info("Check the terminal/console for error details.")
-    
+                            usage_data = {
+                                'item_id': str(item_data['item_id']),  # Ensure it's a string
+                                'item_name': str(selected_item),
+                                'units_used': int(units_used),  # Ensure it's an integer
+                                'purpose': str(purpose),
+                                'used_by': str(user['full_name']),
+                                'department': str(department),
+                                'notes': str(notes) if notes else ""
+                            }
+                            
+                            # Get client info for audit
+                            ip_address, user_agent = get_client_info()
+                            
+                            # Show loading spinner
+                            with st.spinner("Logging usage..."):
+                                success = db.log_usage(usage_data, user)
+                            
+                            if success:
+                                st.success(f"✅ Usage of {units_used} units logged successfully!")
+                                # Force refresh data
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to log usage.")
+                                st.info("Check the terminal/console for error details.")
+            else:
+                st.info("No inventory items available. Add items to inventory first.")
+        
         with tab2:
             st.markdown("#### 📊 Usage Statistics & History")
             
@@ -1276,9 +1219,13 @@ elif active_tab == "Usage":
                 total_units = display_df['Units Used'].sum()
                 unique_items = display_df['Item Name'].nunique()
                 
-                st.metric("Total Entries", len(display_df))
-                st.metric("Total Units Used", f"{total_units:,}")
-                st.metric("Unique Items", unique_items)
+                col_m1, col_m2, col_m3 = st.columns(3)
+                with col_m1:
+                    st.metric("Total Entries", len(display_df))
+                with col_m2:
+                    st.metric("Total Units Used", f"{total_units:,}")
+                with col_m3:
+                    st.metric("Unique Items", unique_items)
                 
                 # Display the table
                 st.dataframe(
@@ -1311,207 +1258,210 @@ elif active_tab == "Usage":
             if not usage_stats.empty:
                 st.markdown("##### 📊 Aggregated Usage Statistics")
                 st.dataframe(usage_stats, use_container_width=True, height=300)
-    
-    with tab3:  # NEW: Trend Analysis Tab
-        st.markdown("#### 📈 Usage Trend Analysis")
         
-        # Try to get usage trends data
-        try:
-            detailed_usage_df = db.get_usage_trends()
+        with tab3:  # NEW: Trend Analysis Tab
+            st.markdown("#### 📈 Usage Trend Analysis")
             
-            if detailed_usage_df is None or detailed_usage_df.empty:
-                st.info("No usage data available for trend analysis. Start logging usage to see trends.")
-            else:
-                # Process the data
-                if 'usage_date' in detailed_usage_df.columns:
-                    # Convert to datetime and extract time components
-                    detailed_usage_df['usage_date'] = pd.to_datetime(detailed_usage_df['usage_date'])
-                    detailed_usage_df['usage_month'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%m')
-                    detailed_usage_df['usage_week'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%W')
-                    detailed_usage_df['day_of_week'] = detailed_usage_df['usage_date'].dt.day_name()
+            # Try to get usage trends data
+            try:
+                detailed_usage_df = db.get_usage_trends()
                 
-                # Time period selector
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    time_period = st.selectbox("Time Period", 
-                                             ["Daily", "Weekly", "Monthly", "Quarterly"])
-                with col2:
-                    chart_type = st.selectbox("Chart Type", 
-                                            ["Line Chart", "Bar Chart", "Area Chart"])
-                with col3:
-                    top_n = st.slider("Top N Items", 5, 20, 10)
-                
-                # Item selector
-                if 'item_name' in detailed_usage_df.columns:
-                    all_items = detailed_usage_df['item_name'].unique().tolist()
+                if detailed_usage_df is None or detailed_usage_df.empty:
+                    st.info("No usage data available for trend analysis. Start logging usage to see trends.")
                 else:
-                    all_items = []
-                
-                selected_items = st.multiselect("Select specific items (or leave empty for all)", 
-                                              all_items)
-                
-                if selected_items:
-                    filtered_df = detailed_usage_df[detailed_usage_df['item_name'].isin(selected_items)]
-                else:
-                    filtered_df = detailed_usage_df
-                
-                if not filtered_df.empty and 'units_used' in filtered_df.columns:
-                    # Group by time period
-                    if time_period == "Daily":
-                        grouped = filtered_df.groupby(['usage_date', 'item_name'])['units_used'].sum().reset_index()
-                        x_col = 'usage_date'
-                        title_suffix = "Daily"
-                    elif time_period == "Weekly":
-                        filtered_df['week_start'] = filtered_df['usage_date'] - pd.to_timedelta(filtered_df['usage_date'].dt.dayofweek, unit='D')
-                        grouped = filtered_df.groupby(['week_start', 'item_name'])['units_used'].sum().reset_index()
-                        x_col = 'week_start'
-                        title_suffix = "Weekly"
-                    elif time_period == "Monthly":
-                        filtered_df['month'] = filtered_df['usage_date'].dt.to_period('M').dt.to_timestamp()
-                        grouped = filtered_df.groupby(['month', 'item_name'])['units_used'].sum().reset_index()
-                        x_col = 'month'
-                        title_suffix = "Monthly"
-                    else:  # Quarterly
-                        filtered_df['quarter'] = filtered_df['usage_date'].dt.to_period('Q').dt.to_timestamp()
-                        grouped = filtered_df.groupby(['quarter', 'item_name'])['units_used'].sum().reset_index()
-                        x_col = 'quarter'
-                        title_suffix = "Quarterly"
+                    # Process the data
+                    if 'usage_date' in detailed_usage_df.columns:
+                        # Convert to datetime and extract time components
+                        detailed_usage_df['usage_date'] = pd.to_datetime(detailed_usage_df['usage_date'])
+                        detailed_usage_df['usage_month'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%m')
+                        detailed_usage_df['usage_week'] = detailed_usage_df['usage_date'].dt.strftime('%Y-%W')
+                        detailed_usage_df['day_of_week'] = detailed_usage_df['usage_date'].dt.day_name()
                     
-                    # Get top N items by total usage for the trend chart
-                    total_usage_by_item = filtered_df.groupby('item_name')['units_used'].sum().nlargest(top_n)
-                    top_items_list = total_usage_by_item.index.tolist()
-                    trend_df = grouped[grouped['item_name'].isin(top_items_list)]
+                    # Time period selector
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        time_period = st.selectbox("Time Period", 
+                                                 ["Daily", "Weekly", "Monthly", "Quarterly"])
+                    with col2:
+                        chart_type = st.selectbox("Chart Type", 
+                                                ["Line Chart", "Bar Chart", "Area Chart"])
+                    with col3:
+                        top_n = st.slider("Top N Items", 5, 20, 10)
                     
-                    # Create trend chart
-                    if not trend_df.empty:
-                        st.markdown(f"##### 📊 {title_suffix} Usage Trends (Top {top_n} Items)")
+                    # Item selector
+                    if 'item_name' in detailed_usage_df.columns:
+                        all_items = detailed_usage_df['item_name'].unique().tolist()
+                    else:
+                        all_items = []
+                    
+                    selected_items = st.multiselect("Select specific items (or leave empty for all)", 
+                                                  all_items)
+                    
+                    if selected_items:
+                        filtered_df = detailed_usage_df[detailed_usage_df['item_name'].isin(selected_items)]
+                    else:
+                        filtered_df = detailed_usage_df
+                    
+                    if not filtered_df.empty and 'units_used' in filtered_df.columns:
+                        # Group by time period
+                        if time_period == "Daily":
+                            grouped = filtered_df.groupby(['usage_date', 'item_name'])['units_used'].sum().reset_index()
+                            x_col = 'usage_date'
+                            title_suffix = "Daily"
+                        elif time_period == "Weekly":
+                            filtered_df['week_start'] = filtered_df['usage_date'] - pd.to_timedelta(filtered_df['usage_date'].dt.dayofweek, unit='D')
+                            grouped = filtered_df.groupby(['week_start', 'item_name'])['units_used'].sum().reset_index()
+                            x_col = 'week_start'
+                            title_suffix = "Weekly"
+                        elif time_period == "Monthly":
+                            filtered_df['month'] = filtered_df['usage_date'].dt.to_period('M').dt.to_timestamp()
+                            grouped = filtered_df.groupby(['month', 'item_name'])['units_used'].sum().reset_index()
+                            x_col = 'month'
+                            title_suffix = "Monthly"
+                        else:  # Quarterly
+                            filtered_df['quarter'] = filtered_df['usage_date'].dt.to_period('Q').dt.to_timestamp()
+                            grouped = filtered_df.groupby(['quarter', 'item_name'])['units_used'].sum().reset_index()
+                            x_col = 'quarter'
+                            title_suffix = "Quarterly"
                         
-                        if chart_type == "Line Chart":
-                            fig = px.line(
-                                trend_df,
-                                x=x_col,
-                                y='units_used',
-                                color='item_name',
-                                title=f"{title_suffix} Usage Trends",
-                                labels={'units_used': 'Units Used', x_col: 'Date'},
-                                markers=True
-                            )
-                        elif chart_type == "Bar Chart":
-                            fig = px.bar(
-                                trend_df,
-                                x=x_col,
-                                y='units_used',
-                                color='item_name',
-                                title=f"{title_suffix} Usage Trends",
-                                labels={'units_used': 'Units Used', x_col: 'Date'},
-                                barmode='stack'
-                            )
-                        else:  # Area Chart
-                            fig = px.area(
-                                trend_df,
-                                x=x_col,
-                                y='units_used',
-                                color='item_name',
-                                title=f"{title_suffix} Usage Trends",
-                                labels={'units_used': 'Units Used', x_col: 'Date'}
-                            )
+                        # Get top N items by total usage for the trend chart
+                        total_usage_by_item = filtered_df.groupby('item_name')['units_used'].sum().nlargest(top_n)
+                        top_items_list = total_usage_by_item.index.tolist()
+                        trend_df = grouped[grouped['item_name'].isin(top_items_list)]
                         
-                        fig.update_layout(
-                            height=500,
-                            plot_bgcolor='white',
-                            paper_bgcolor='white',
-                            hovermode='x unified',
-                            xaxis_title="Date",
-                            yaxis_title="Units Used",
-                            legend_title="Item Name"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Department-wise usage
-                    st.markdown("##### 🏢 Department-wise Usage")
-                    if 'department' in filtered_df.columns:
-                        dept_usage = filtered_df.groupby(['department', 'item_name'])['units_used'].sum().reset_index()
-                        top_dept_items = dept_usage.groupby('item_name')['units_used'].sum().nlargest(10).index.tolist()
-                        dept_usage_filtered = dept_usage[dept_usage['item_name'].isin(top_dept_items)]
-                        
-                        if not dept_usage_filtered.empty:
-                            fig2 = px.sunburst(
-                                dept_usage_filtered,
-                                path=['department', 'item_name'],
-                                values='units_used',
-                                title="Department-wise Usage Distribution",
-                                color='units_used',
-                                color_continuous_scale='Viridis'
-                            )
-                            fig2.update_layout(height=500)
-                            st.plotly_chart(fig2, use_container_width=True)
-                    
-                    # Usage heatmap by day of week and hour
-                    st.markdown("##### 🕒 Usage Patterns")
-                    col_h1, col_h2 = st.columns(2)
-                    
-                    with col_h1:
-                        # Day of week heatmap
-                        filtered_df['day_of_week'] = filtered_df['usage_date'].dt.day_name()
-                        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                        filtered_df['day_of_week'] = pd.Categorical(filtered_df['day_of_week'], categories=day_order, ordered=True)
-                        day_usage = filtered_df.groupby(['day_of_week', 'item_name'])['units_used'].sum().reset_index()
-                        
-                        # Pivot for heatmap
-                        day_pivot = day_usage.pivot(index='item_name', columns='day_of_week', values='units_used').fillna(0)
-                        
-                        if not day_pivot.empty:
-                            fig3 = px.imshow(
-                                day_pivot,
-                                labels=dict(x="Day of Week", y="Item", color="Units Used"),
-                                title="Usage by Day of Week",
-                                color_continuous_scale='Viridis',
-                                aspect="auto"
-                            )
-                            fig3.update_layout(height=400)
-                            st.plotly_chart(fig3, use_container_width=True)
-                    
-                    with col_h2:
-                        # Purpose-wise breakdown
-                        if 'purpose' in filtered_df.columns:
-                            purpose_usage = filtered_df.groupby('purpose')['units_used'].sum().reset_index()
-                            purpose_usage = purpose_usage.sort_values('units_used', ascending=False).head(10)
+                        # Create trend chart
+                        if not trend_df.empty:
+                            st.markdown(f"##### 📊 {title_suffix} Usage Trends (Top {top_n} Items)")
                             
-                            if not purpose_usage.empty:
-                                fig4 = px.bar(
-                                    purpose_usage,
-                                    x='units_used',
-                                    y='purpose',
-                                    orientation='h',
-                                    color='units_used',
-                                    title="Top 10 Usage Purposes",
-                                    text='units_used'
+                            if chart_type == "Line Chart":
+                                fig = px.line(
+                                    trend_df,
+                                    x=x_col,
+                                    y='units_used',
+                                    color='item_name',
+                                    title=f"{title_suffix} Usage Trends",
+                                    labels={'units_used': 'Units Used', x_col: 'Date'},
+                                    markers=True
                                 )
-                                fig4.update_traces(texttemplate='%{text:,}', textposition='outside')
-                                fig4.update_layout(height=400, yaxis={'categoryorder':'total ascending'})
-                                st.plotly_chart(fig4, use_container_width=True)
-                    
-                    # Export detailed trends
-                    st.markdown("##### 📥 Export Trend Data")
-                    csv = detailed_usage_df.to_csv(index=False)
-                    st.download_button(
-                        "💾 Download Detailed Usage Data",
-                        data=csv,
-                        file_name=f"usage_trends_{datetime.now().strftime('%Y%m%d')}.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.info("Usage data doesn't contain required columns for analysis.")
-                    
-        except AttributeError as e:
-            st.error(f"Database method error: {str(e)}")
-            st.info("The get_usage_trends() method might not be available. Check if the supabase_db.py file has this method defined.")
-        except Exception as e:
-            st.error(f"Error loading usage trends: {str(e)}")
-            st.info("There was an error loading usage trend data. This might be because:")
-            st.info("1. The usage_logs table doesn't exist yet in your Supabase database")
-            st.info("2. There's a connection issue with the database")
-            st.info("3. The table structure might be different than expected")
+                            elif chart_type == "Bar Chart":
+                                fig = px.bar(
+                                    trend_df,
+                                    x=x_col,
+                                    y='units_used',
+                                    color='item_name',
+                                    title=f"{title_suffix} Usage Trends",
+                                    labels={'units_used': 'Units Used', x_col: 'Date'},
+                                    barmode='stack'
+                                )
+                            else:  # Area Chart
+                                fig = px.area(
+                                    trend_df,
+                                    x=x_col,
+                                    y='units_used',
+                                    color='item_name',
+                                    title=f"{title_suffix} Usage Trends",
+                                    labels={'units_used': 'Units Used', x_col: 'Date'}
+                                )
+                            
+                            fig.update_layout(
+                                height=500,
+                                plot_bgcolor='white',
+                                paper_bgcolor='white',
+                                hovermode='x unified',
+                                xaxis_title="Date",
+                                yaxis_title="Units Used",
+                                legend_title="Item Name"
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Department-wise usage
+                        st.markdown("##### 🏢 Department-wise Usage")
+                        if 'department' in filtered_df.columns:
+                            dept_usage = filtered_df.groupby(['department', 'item_name'])['units_used'].sum().reset_index()
+                            top_dept_items = dept_usage.groupby('item_name')['units_used'].sum().nlargest(10).index.tolist()
+                            dept_usage_filtered = dept_usage[dept_usage['item_name'].isin(top_dept_items)]
+                            
+                            if not dept_usage_filtered.empty:
+                                fig2 = px.sunburst(
+                                    dept_usage_filtered,
+                                    path=['department', 'item_name'],
+                                    values='units_used',
+                                    title="Department-wise Usage Distribution",
+                                    color='units_used',
+                                    color_continuous_scale='Viridis'
+                                )
+                                fig2.update_layout(height=500)
+                                st.plotly_chart(fig2, use_container_width=True)
+                        
+                        # Usage heatmap by day of week and hour
+                        st.markdown("##### 🕒 Usage Patterns")
+                        col_h1, col_h2 = st.columns(2)
+                        
+                        with col_h1:
+                            # Day of week heatmap
+                            filtered_df['day_of_week'] = filtered_df['usage_date'].dt.day_name()
+                            day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                            filtered_df['day_of_week'] = pd.Categorical(filtered_df['day_of_week'], categories=day_order, ordered=True)
+                            day_usage = filtered_df.groupby(['day_of_week', 'item_name'])['units_used'].sum().reset_index()
+                            
+                            # Pivot for heatmap
+                            day_pivot = day_usage.pivot(index='item_name', columns='day_of_week', values='units_used').fillna(0)
+                            
+                            if not day_pivot.empty:
+                                fig3 = px.imshow(
+                                    day_pivot,
+                                    labels=dict(x="Day of Week", y="Item", color="Units Used"),
+                                    title="Usage by Day of Week",
+                                    color_continuous_scale='Viridis',
+                                    aspect="auto"
+                                )
+                                fig3.update_layout(height=400)
+                                st.plotly_chart(fig3, use_container_width=True)
+                        
+                        with col_h2:
+                            # Purpose-wise breakdown
+                            if 'purpose' in filtered_df.columns:
+                                purpose_usage = filtered_df.groupby('purpose')['units_used'].sum().reset_index()
+                                purpose_usage = purpose_usage.sort_values('units_used', ascending=False).head(10)
+                                
+                                if not purpose_usage.empty:
+                                    fig4 = px.bar(
+                                        purpose_usage,
+                                        x='units_used',
+                                        y='purpose',
+                                        orientation='h',
+                                        color='units_used',
+                                        title="Top 10 Usage Purposes",
+                                        text='units_used'
+                                    )
+                                    fig4.update_traces(texttemplate='%{text:,}', textposition='outside')
+                                    fig4.update_layout(height=400, yaxis={'categoryorder':'total ascending'})
+                                    st.plotly_chart(fig4, use_container_width=True)
+                        
+                        # Export detailed trends
+                        st.markdown("##### 📥 Export Trend Data")
+                        csv = detailed_usage_df.to_csv(index=False)
+                        st.download_button(
+                            "💾 Download Detailed Usage Data",
+                            data=csv,
+                            file_name=f"usage_trends_{datetime.now().strftime('%Y%m%d')}.csv",
+                            mime="text/csv"
+                        )
+                    else:
+                        st.info("Usage data doesn't contain required columns for analysis.")
+                        
+            except AttributeError as e:
+                st.error(f"Database method error: {str(e)}")
+                st.info("The get_usage_trends() method might not be available. Check if the supabase_db.py file has this method defined.")
+            except Exception as e:
+                st.error(f"Error loading usage trends: {str(e)}")
+                st.info("There was an error loading usage trend data. This might be because:")
+                st.info("1. The usage_logs table doesn't exist yet in your Supabase database")
+                st.info("2. There's a connection issue with the database")
+                st.info("3. The table structure might be different than expected")
+    except Exception as e:
+        st.error(f"An error occurred in the Usage tab: {str(e)}")
+        st.info("Please try refreshing the page or contact support if the issue persists.")
                 
 # EXPIRY MANAGEMENT TAB
 elif active_tab == "Expiry":
@@ -2774,23 +2724,21 @@ elif active_tab == "Settings":
                             
                             submitted = st.form_submit_button("💾 Save Changes", type="primary")
                             
-                        if submitted:
-                            updates = {
-                                'full_name': new_fullname,
-                                'role': new_role,
-                                'department': new_department
-                            }
-                            
+                            if submitted:
+                                updates = {
+                                    'full_name': new_fullname,
+                                    'role': new_role,
+                                    'department': new_department
+                                }
+                                
                                 # Handle password reset
-                            if reset_password and new_password:
-                                if not new_password:
-                                    st.error("New password is required when resetting password!")
-                                elif new_password != confirm_password:
-                                    st.error("Passwords do not match!")
-                                elif len(new_password) < 6:
-                                    st.error("Password must be at least 6 characters long!")
-                                else:
-                                    updates['password'] = new_password
+                                if reset_password and new_password:
+                                    if new_password != confirm_password:
+                                        st.error("Passwords do not match!")
+                                    elif len(new_password) < 6:
+                                        st.error("Password must be at least 6 characters long!")
+                                    else:
+                                        updates['password'] = new_password
                                 
                                 # Get client info for audit
                                 ip_address, user_agent = get_client_info()
@@ -3217,27 +3165,3 @@ st.markdown(
     unsafe_allow_html=True
 
 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
