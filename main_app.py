@@ -23,6 +23,9 @@ if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 if 'reset_in_progress' not in st.session_state:
     st.session_state.reset_in_progress = False
+# FIX: Cache authenticated user in session_state so reruns don't log out
+if 'authenticated_user' not in st.session_state:
+    st.session_state.authenticated_user = None
 
 new_logo = Image.open("logo.png")
 st.set_page_config(
@@ -35,18 +38,26 @@ st.set_page_config(
 # AUTHENTICATION
 # -------------------------------------------------
 auth = SimpleAuth()
-user = auth.check_auth()
 
-# Persist authentication in session_state
-if "authenticated_user" not in st.session_state:
+# FIX: Only call check_auth() when we don't already have a cached user.
+# This prevents reruns (tab switches, button clicks) from resetting auth state.
+if st.session_state.authenticated_user is None:
     user = auth.check_auth()
     if user:
         st.session_state.authenticated_user = user
-    else:
-        st.stop()
+else:
+    # Trust session_state as source of truth to survive reruns.
+    # Still call check_auth so explicit logouts are handled correctly.
+    user = st.session_state.authenticated_user
+    _fresh = auth.check_auth()
+    if _fresh:
+        st.session_state.authenticated_user = _fresh
+        user = _fresh
 
-# Use stored user session
-user = st.session_state.authenticated_user
+# Stop app if not authenticated
+if not user:
+    st.session_state.authenticated_user = None
+    st.stop()
 
 @st.cache_resource(ttl=300)  # Cache for 5 minutes
 def get_database():
@@ -672,10 +683,9 @@ with st.sidebar:
         )
     
     if st.button("🚪 Logout", use_container_width=True, type="secondary"):
+        # FIX: Clear cached user from session_state before calling auth.logout()
+        st.session_state.authenticated_user = None
         auth.logout()
-        if "authenticated_user" in st.session_state:
-            del st.session_state.authenticated_user
-        st.rerun
 
 # ========== MAIN CONTENT BASED ON SELECTED TAB ==========
 # DASHBOARD TAB
@@ -3345,4 +3355,3 @@ st.markdown(
     "© 2025 Navrongo Health Research Centre – Built by Fedelis Wekia Amenga-etego</p>",
     unsafe_allow_html=True
 )
-
