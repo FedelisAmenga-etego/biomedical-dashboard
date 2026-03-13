@@ -23,9 +23,6 @@ if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 if 'reset_in_progress' not in st.session_state:
     st.session_state.reset_in_progress = False
-# FIX: Cache authenticated user in session_state so reruns don't log out
-if 'authenticated_user' not in st.session_state:
-    st.session_state.authenticated_user = None
 
 new_logo = Image.open("logo.png")
 st.set_page_config(
@@ -38,25 +35,10 @@ st.set_page_config(
 # AUTHENTICATION
 # -------------------------------------------------
 auth = SimpleAuth()
-
-# FIX: Only call check_auth() when we don't already have a cached user.
-# This prevents reruns (tab switches, button clicks) from resetting auth state.
-if st.session_state.authenticated_user is None:
-    user = auth.check_auth()
-    if user:
-        st.session_state.authenticated_user = user
-else:
-    # Trust session_state as source of truth to survive reruns.
-    # Still call check_auth so explicit logouts are handled correctly.
-    user = st.session_state.authenticated_user
-    _fresh = auth.check_auth()
-    if _fresh:
-        st.session_state.authenticated_user = _fresh
-        user = _fresh
+user = auth.check_auth()
 
 # Stop app if not authenticated
 if not user:
-    st.session_state.authenticated_user = None
     st.stop()
 
 @st.cache_resource(ttl=300)  # Cache for 5 minutes
@@ -683,8 +665,6 @@ with st.sidebar:
         )
     
     if st.button("🚪 Logout", use_container_width=True, type="secondary"):
-        # FIX: Clear cached user from session_state before calling auth.logout()
-        st.session_state.authenticated_user = None
         auth.logout()
 
 # ========== MAIN CONTENT BASED ON SELECTED TAB ==========
