@@ -37,9 +37,16 @@ st.set_page_config(
 auth = SimpleAuth()
 user = auth.check_auth()
 
-# Stop app if not authenticated
-if not user:
-    st.stop()
+# Persist authentication in session_state
+if "authenticated_user" not in st.session_state:
+    user = auth.check_auth()
+    if user:
+        st.session_state.authenticated_user = user
+    else:
+        st.stop()
+
+# Use stored user session
+user = st.session_state.authenticated_user
 
 @st.cache_resource(ttl=300)  # Cache for 5 minutes
 def get_database():
@@ -666,6 +673,9 @@ with st.sidebar:
     
     if st.button("🚪 Logout", use_container_width=True, type="secondary"):
         auth.logout()
+        if "authenticated_user" in st.session_state:
+            del st.session_state.authenticated_user
+        st.rerun
 
 # ========== MAIN CONTENT BASED ON SELECTED TAB ==========
 # DASHBOARD TAB
@@ -3335,3 +3345,4 @@ st.markdown(
     "© 2025 Navrongo Health Research Centre – Built by Fedelis Wekia Amenga-etego</p>",
     unsafe_allow_html=True
 )
+
