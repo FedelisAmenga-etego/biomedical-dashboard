@@ -1106,7 +1106,7 @@ elif active_tab == "Inventory":
                     """)
                 
                 with col2:
-                    confirm_delete = st.checkbox("I understand this is permanent", key="confirm_delete")
+                    confirm_delete = st.checkbox("I understand this is permanent", key="confirm_delete_inventory")
                     delete_reason = st.text_input("Reason for deletion (optional)", 
                                                  placeholder="e.g., Discontinued, Damaged")
                     
@@ -1644,10 +1644,11 @@ elif active_tab == "Expiry":
                     if action == "Discard":
                         # Get current quantity
                         current_qty = item_data.get('quantity') or item_data.get('total_units', 0)
+                        current_qty = max(int(current_qty), 1)  # FIX: ensure max_value >= min_value=1
                         qty = st.number_input("Quantity to discard", 
                                             min_value=1, 
-                                            max_value=int(current_qty),
-                                            value=int(current_qty))
+                                            max_value=current_qty,
+                                            value=current_qty)
                         reason = st.selectbox("Reason", ["Expired", "Damaged", "Contaminated", "Other"])
                         disposal_method = st.selectbox("Disposal Method", 
                                                       ["Incinerate", "Chemical Treatment", "Landfill", "Return to Supplier"])
@@ -2867,8 +2868,8 @@ elif active_tab == "Settings":
                             """)
                         
                         with col2:
-                            confirm = st.checkbox("I understand this action is permanent")
-                            transfer_data = st.checkbox("Transfer user's records to admin", value=True)
+                            confirm = st.checkbox("I understand this action is permanent", key="confirm_delete_user")
+                            transfer_data = st.checkbox("Transfer user's records to admin", value=True, key="transfer_user_data")
                             
                             if st.button("🗑️ Delete User", 
                                        disabled=not confirm,
