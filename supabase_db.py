@@ -1,4 +1,4 @@
-# supabase_db.py – FINAL FIXED & STABLE VERSION
+# supabase_db.py – FINAL FIXED & STABLE VERSION WITH RESET FUNCTIONALITY
 
 import streamlit as st
 from supabase import create_client, Client
@@ -311,6 +311,72 @@ class SupabaseDatabase:
             return False, str(e)
     
     # ------------------------------------------------------------------
+    # DELETE INVENTORY ITEM
+    # ------------------------------------------------------------------
+    def delete_inventory_item(self, item_id: str, user: Dict = None, reason: str = ""):
+        """Delete an inventory item permanently"""
+        try:
+            # Get current item data BEFORE deletion for audit
+            old_response = self.supabase.table("inventory") \
+                .select("*") \
+                .eq("item_id", item_id) \
+                .execute()
+
+            if not old_response.data:
+                print(f"Item {item_id} not found for deletion")
+                return False
+
+            old_data = old_response.data[0]
+            item_name = old_data.get('item_name', item_id)
+
+            # Perform the deletion
+            response = self.supabase.table("inventory") \
+                .delete() \
+                .eq("item_id", item_id) \
+                .execute()
+
+            if response.data:
+                # Get client info for audit
+                ip_address = None
+                user_agent = None
+                try:
+                    import streamlit as st
+                    ctx = st.runtime.get_instance()._session_mgr.list_active_sessions()[0].request
+                    if hasattr(ctx, 'headers'):
+                        headers = ctx.headers
+                        ip_address = headers.get('X-Forwarded-For', headers.get('Remote-Addr', 'Unknown'))
+                        user_agent = headers.get('User-Agent', 'Unknown')
+                except:
+                    pass
+
+                # Log the deletion
+                notes = f"Deleted item: {item_name}"
+                if reason:
+                    notes += f". Reason: {reason}"
+
+                self._log_audit_event(
+                    user=user,
+                    action_type="DELETE",
+                    table_name="inventory",
+                    record_id=item_id,
+                    field_name=None,
+                    old_value=str(old_data),  # Store full item data as old value
+                    new_value=None,
+                    notes=notes,
+                    ip_address=ip_address,
+                    user_agent=user_agent
+                )
+                
+                return True
+
+            return False
+        except Exception as e:
+            print("Delete inventory item error:", e)
+            import traceback
+            traceback.print_exc()
+            return False
+
+    # ------------------------------------------------------------------
     # USAGE LOGGING (WORKING + AUDITED)
     # ------------------------------------------------------------------
     def log_usage(
@@ -402,6 +468,61 @@ class SupabaseDatabase:
             return False
 
     # ------------------------------------------------------------------
+    # CLEAR ALL USAGE LOGS (FOR RESET FUNCTIONALITY)
+    # ------------------------------------------------------------------
+    def clear_all_usage_logs(self, user: Dict = None):
+        """Clear all usage logs from the database (for system reset)"""
+        try:
+            # Get count of logs before deletion for audit
+            count_response = self.supabase.table("usage_logs") \
+                .select("*", count="exact") \
+                .execute()
+            
+            log_count = count_response.count if hasattr(count_response, 'count') else 0
+            
+            # Delete all usage logs
+            response = self.supabase.table("usage_logs") \
+                .delete() \
+                .neq("id", 0) \
+                .execute()
+            
+            deleted_count = len(response.data) if response.data else 0
+            
+            # Get client info for audit
+            ip_address = None
+            user_agent = None
+            try:
+                import streamlit as st
+                ctx = st.runtime.get_instance()._session_mgr.list_active_sessions()[0].request
+                if hasattr(ctx, 'headers'):
+                    headers = ctx.headers
+                    ip_address = headers.get('X-Forwarded-For', headers.get('Remote-Addr', 'Unknown'))
+                    user_agent = headers.get('User-Agent', 'Unknown')
+            except:
+                pass
+            
+            # Log the reset action
+            self._log_audit_event(
+                user=user,
+                action_type="SYSTEM_RESET",
+                table_name="usage_logs",
+                record_id="ALL",
+                field_name=None,
+                old_value=f"{deleted_count} records",
+                new_value="0 records",
+                notes=f"System reset: Cleared all usage logs ({deleted_count} records deleted)",
+                ip_address=ip_address,
+                user_agent=user_agent
+            )
+            
+            return True, f"Successfully cleared {deleted_count} usage logs"
+            
+        except Exception as e:
+            print("❌ ERROR in clear_all_usage_logs():", e)
+            print(traceback.format_exc())
+            return False, str(e)
+
+    # ------------------------------------------------------------------
     # AUDIT LOGGING (ONLY IMPLEMENTATION)
     # ------------------------------------------------------------------
     def _log_audit_event(
@@ -485,18 +606,19 @@ class SupabaseDatabase:
         except Exception as e:
             print("Cleanup duplicate audits error:", e)
             return 0
+            
     # ------------------------------------------------------------------
     # REPORTING
     # ------------------------------------------------------------------
     def get_audit_logs(
-    self,
-    start_date: str = None,
-    end_date: str = None,
-    user_id: str = None,
-    action_type: str = None,
-    table_name: str = None,
-    limit: int = 200
-):
+        self,
+        start_date: str = None,
+        end_date: str = None,
+        user_id: str = None,
+        action_type: str = None,
+        table_name: str = None,
+        limit: int = 200
+    ):
         try:
             query = self.supabase.table("audit_logs").select("*")
     
@@ -548,99 +670,11 @@ class SupabaseDatabase:
         except Exception:
             return pd.DataFrame()
 
-    def create_user(self, user_data: Dict, current_user: Dict = None, 
-                    ip_address: str = None, user_agent: str = None):
-        try:
-            # Hash password
-            password = user_data.pop('password', '')
-            if password:
-                salt = bcrypt.gensalt()
-                user_data['password_hash'] = bcrypt.hashpw(password.encode(), salt).decode()
-            
-            # Set default role if not provided
-            if 'role' not in user_data:
-                user_data['role'] = 'user'
-            
-            # Add creation timestamp
-            user_data['created_at'] = datetime.now().isoformat()
-            
-            response = self.supabase.table("users").insert(user_data).execute()
-            
-            if response.data:
-                # Audit the creation
-                self._log_audit_event(
-                    user=current_user,
-                    action_type="USER_CREATE",
-                    table_name="users",
-                    record_id=user_data.get('username'),
-                    notes=f"Created user {user_data.get('username')}",
-                    ip_address=ip_address,
-                    user_agent=user_agent
-                )
-                return True, "User created successfully"
-            return False, "Failed to create user"
-        except Exception as e:
-            return False, str(e)
-
-    def update_user(self, username: str, updates: Dict, current_user: Dict = None,
-                   ip_address: str = None, user_agent: str = None):
-        try:
-            # If password is being updated, hash it
-            if 'password' in updates:
-                password = updates.pop('password')
-                salt = bcrypt.gensalt()
-                updates['password_hash'] = bcrypt.hashpw(password.encode(), salt).decode()
-                updates['last_password_change'] = datetime.now().isoformat()
-            
-            response = self.supabase.table("users") \
-                .update(updates) \
-                .eq("username", username) \
-                .execute()
-            
-            if response.data:
-                # Audit the update
-                self._log_audit_event(
-                    user=current_user,
-                    action_type="USER_UPDATE",
-                    table_name="users",
-                    record_id=username,
-                    notes=f"Updated user {username}",
-                    ip_address=ip_address,
-                    user_agent=user_agent
-                )
-                return True, "User updated successfully"
-            return False, "Failed to update user"
-        except Exception as e:
-            return False, str(e)
-
-    def delete_user(self, username: str, current_user: Dict = None,
-                   ip_address: str = None, user_agent: str = None):
-        try:
-            response = self.supabase.table("users") \
-                .delete() \
-                .eq("username", username) \
-                .execute()
-            
-            if response.data:
-                # Audit the deletion
-                self._log_audit_event(
-                    user=current_user,
-                    action_type="USER_DELETE",
-                    table_name="users",
-                    record_id=username,
-                    notes=f"Deleted user {username}",
-                    ip_address=ip_address,
-                    user_agent=user_agent
-                )
-                return True, "User deleted successfully"
-            return False, "Failed to delete user"
-        except Exception as e:
-            return False, str(e)
-
     # ------------------------------------------------------------------
     # EXPIRY MANAGEMENT
     # ------------------------------------------------------------------
     def get_expired_items(self):
+        """Get items with expiry dates and calculate days to expiry"""
         try:
             # Get all items with expiry dates
             response = self.supabase.table("inventory") \
@@ -699,11 +733,8 @@ class SupabaseDatabase:
             return pd.DataFrame()
 
 
-        # ------------------------------------------------------------------
-    # EXPIRY MANAGEMENT
-    # ------------------------------------------------------------------
-    def get_expired_items(self):
-        """Get items with expiry dates and calculate days to expiry"""
+    def get_items_expiring_soon(self, days_threshold: int = 30):
+        """Get items expiring within the specified number of days"""
         try:
             # Get all items with expiry dates
             response = self.supabase.table("inventory") \
@@ -721,42 +752,17 @@ class SupabaseDatabase:
             df['expiry_date_dt'] = pd.to_datetime(df['expiry_date'], errors='coerce')
             df['days_to_expiry'] = (df['expiry_date_dt'] - current_date).dt.days
             
-            return df
+            # Filter items expiring within the threshold
+            expiring_soon = df[(df['days_to_expiry'] > 0) & (df['days_to_expiry'] <= days_threshold)]
+            
+            return expiring_soon
             
         except Exception as e:
-            print("Get expired items error:", e)
+            print("Get items expiring soon error:", e)
             return pd.DataFrame()
 
-        def get_items_expiring_soon(self, days_threshold: int = 30):
-            """Get items expiring within the specified number of days"""
-            try:
-                # Get all items with expiry dates
-                response = self.supabase.table("inventory") \
-                    .select("*") \
-                    .not_.is_("expiry_date", "null") \
-                    .execute()
-                
-                df = pd.DataFrame(response.data)
-                
-                if df.empty:
-                    return df
-                
-                # Calculate days to expiry
-                current_date = pd.Timestamp.now()
-                df['expiry_date_dt'] = pd.to_datetime(df['expiry_date'], errors='coerce')
-                df['days_to_expiry'] = (df['expiry_date_dt'] - current_date).dt.days
-                
-                # Filter items expiring within the threshold
-                expiring_soon = df[(df['days_to_expiry'] > 0) & (df['days_to_expiry'] <= days_threshold)]
-                
-                return expiring_soon
-                
-            except Exception as e:
-                print("Get items expiring soon error:", e)
-                return pd.DataFrame()
 
-
-        # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # USER MANAGEMENT (FOR SETTINGS TAB)
     # ------------------------------------------------------------------
     def get_all_users(self):
@@ -910,9 +916,3 @@ class SupabaseDatabase:
         except Exception as e:
             print("Get user by username error:", e)
             return None
-
-
-
-
-
-
